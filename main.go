@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -24,36 +25,53 @@ var (
 	count     int
 	threshold int
 
-	parties  []tss.Party
-	partyIDs tss.SortedPartyIDs
-	ctx      *tss.PeerContext
+	dataDir string
 )
 
 func main() {
 	// setup
-	curve = tss.S256()
+	dataDir = "./data/"
+	if strings.ToLower(os.Getenv("CURVE")) == "ed25519" {
+		curve = tss.Edwards()
+		log.Printf("Curve: ed25519\n")
+	} else {
+		curve = tss.S256()
+		log.Printf("Curve: secp256k1\n")
+	}
 	count, _ = strconv.Atoi(os.Getenv("COUNT"))
 	threshold, _ = strconv.Atoi(os.Getenv("THRESHOLD"))
-	parties = make([]tss.Party, count)
+	log.Printf("Quorum: %d/%d", threshold, count)
 
 	// get ids for parties
-	partyIDs = tss.GenerateTestPartyIDs(count)
-	ctx = tss.NewPeerContext(partyIDs)
+	partyIDs := tss.GenerateTestPartyIDs(count)
 
 	// use gg18 dkg
-	keygenSaves := execKeygen()
+	dirEntries, _ := os.ReadDir(dataDir)
+	if len(dirEntries) < count {
+		log.Printf("Keygen protocol executing")
+		_ = os.RemoveAll(dataDir)
+		_ = execKeygen(partyIDs)
+	} else {
+		log.Printf("Keygen data found")
+	}
+	keygenSaves, partyIDs, err := loadKeygenSaves()
 
 	// use gg18 tss
 	message := big.NewInt(int64(rand.Int()))
-	signature := execSigning(message, keygenSaves)
+	signature, err := execSigning(message, partyIDs, keygenSaves)
+	if err != nil {
+		log.Fatalf("Error occurred in execSigning: %+v\n", err)
+	}
 
-	fmt.Printf("\n\n")
-	fmt.Printf("Message: %s\n", message.String())
+	fmt.Printf("\nMessage: %s\n", message.String())
 	fmt.Printf("Public key (compressed): %s\n", keygenSaves[0].ECDSAPub.X().String())
-	fmt.Printf("Signature: %s\n", signature)
+	fmt.Printf("Signature: %x\n", string(signature))
 }
 
-func execKeygen() []keygen.LocalPartySaveData {
+func execKeygen(partyIDs tss.SortedPartyIDs) []keygen.LocalPartySaveData {
+	ctx := tss.NewPeerContext(partyIDs)
+	parties := make([]*keygen.LocalParty, count)
+
 	// communication channel setup
 	outCh := make(chan tss.Message, len(partyIDs))
 	endCh := make(chan keygen.LocalPartySaveData, len(partyIDs))
@@ -78,7 +96,7 @@ func execKeygen() []keygen.LocalPartySaveData {
 	for { // continuous loop
 		select {
 		case err := <-errCh:
-			log.Fatalf("Error occurred during peer communication: %+v\n", err)
+			log.Fatalf("Error occurred during protocol execution: %+v\n", err)
 		case msg := <-outCh:
 			log.Printf("Out channel received message: %+v\n", msg.String())
 			recipients := msg.GetTo()
@@ -112,7 +130,10 @@ func execKeygen() []keygen.LocalPartySaveData {
 	}
 }
 
-func execSigning(message *big.Int, keygenSaves []keygen.LocalPartySaveData) []byte {
+func execSigning(message *big.Int, partyIDs []*tss.PartyID, keygenSaves []keygen.LocalPartySaveData) ([]byte, error) {
+	ctx := tss.NewPeerContext(partyIDs)
+	parties := make([]*signing.LocalParty, count)
+
 	// communication channel setup
 	outCh := make(chan tss.Message, len(partyIDs))
 	endCh := make(chan common.SignatureData, len(partyIDs))
@@ -135,7 +156,8 @@ func execSigning(message *big.Int, keygenSaves []keygen.LocalPartySaveData) []by
 	for { // continuous loop
 		select {
 		case err := <-errCh:
-			log.Fatalf("Error occurred during peer communication: %+v\n", err)
+			log.Fatalf("Error occurred during protocol execution: %+v\n", err)
+			return nil, err
 		case msg := <-outCh:
 			log.Printf("Out channel received message: %+v\n", msg.String())
 			recipients := msg.GetTo()
@@ -148,7 +170,37 @@ func execSigning(message *big.Int, keygenSaves []keygen.LocalPartySaveData) []by
 			}
 		case <-endCh:
 			log.Printf("Signature computed.")
-			return (<-endCh).Signature
+			return (<-endCh).Signature, nil
 		}
 	}
+}
+
+func loadKeygenSaves() ([]keygen.LocalPartySaveData, tss.SortedPartyIDs, error) {
+	keygenSaves := make([]keygen.LocalPartySaveData, 0, count)
+	for i := 0; i < count; i++ {
+		path, _ := filepath.Abs("./data/" + strconv.Itoa(i) + "_save.json")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			log.Fatalf("Error occurred in os.ReadFile: %+v\n", err)
+		}
+
+		var keygenSave keygen.LocalPartySaveData
+		if err = json.Unmarshal(data, &keygenSave); err != nil {
+			log.Fatalf("Error occurred in json.Unmarshal: %+v\n", err)
+		}
+
+		for _, kbxj := range keygenSave.BigXj {
+			kbxj.SetCurve(curve)
+		}
+		keygenSave.ECDSAPub.SetCurve(tss.S256())
+		keygenSaves = append(keygenSaves, keygenSave)
+	}
+
+	partyIDs := make(tss.UnSortedPartyIDs, len(keygenSaves))
+	for i, keygenSave := range keygenSaves {
+		pMoniker := fmt.Sprintf("%d", i+1)
+		partyIDs[i] = tss.NewPartyID(pMoniker, pMoniker, keygenSave.ShareID)
+	}
+	sortedPIDs := tss.SortPartyIDs(partyIDs)
+	return keygenSaves, sortedPIDs, nil
 }
