@@ -79,9 +79,9 @@ func keygen(s network.Stream) {
 		for { // reading should go on forever in a thread
 			str, err := buffer.ReadString('\n') // reads up to a new line from buffer (stream), then continues
 			if err != nil {
-				log.Printf("Error occurred in KeygenHandler: %+v\n", err)
+				continue // keep trying to read from stream
 			} else {
-				log.Printf("%s\n", str)
+				fmt.Printf("\u001B[32m%s\u001B[0m> ", str)
 			}
 		}
 	}()
@@ -89,12 +89,13 @@ func keygen(s network.Stream) {
 	// write data to stream
 	go func() {
 		for {
+			fmt.Printf("> ")
 			str, err := stdReader.ReadString('\n') // reads up to a new line from stdin, then continues
 			if err != nil {
-				log.Printf("Error occurred in KeygenHandler: %+v\n", err)
+				log.Printf("Error occurred in keygen: %+v\n", err)
 			}
-			if _, err = buffer.WriteString(fmt.Sprintf("%s\n", str)); err != nil {
-				log.Printf("Error occurred in KeygenHandler: %+v\n", err)
+			if _, err = buffer.WriteString(fmt.Sprintf("%s", str)); err != nil {
+				continue
 			} else {
 				_ = buffer.Flush()
 			}

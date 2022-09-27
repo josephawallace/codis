@@ -2,8 +2,15 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
+	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/multiformats/go-multiaddr"
+	"io"
 	"log"
+	mrand "math/rand"
 	"os"
 	"os/signal"
 	"strconv"
@@ -39,15 +46,10 @@ func main() {
 
 	keygenService := NewKeygenService(node) // set stream handlers, set every service available here.
 	if len(config.PeerAddrs) > 0 {
-		numPeerConnections, err := ConnectToPeers(ctx, node, config.PeerAddrs) // only dialing peers, not setting up streams
-		if err != nil {
-			log.Printf("Error occurred in ConnectToPeers: %+v\n", err)
-		}
-		log.Printf("Number of peer connections: %d\n", numPeerConnections)
-
 		if config.ProtocolID == ID {
 			for _, peerAddr := range config.PeerAddrs {
 				peerAddrInfo, err := peer.AddrInfoFromP2pAddr(peerAddr)
+				node.Peerstore().AddAddrs(peerAddrInfo.ID, peerAddrInfo.Addrs, peerstore.PermanentAddrTTL)
 				if err != nil {
 					log.Printf("Error occurred in peer.AddrInfoFromP2pAddr: %+v\n", err)
 				}
@@ -72,4 +74,33 @@ func run(h host.Host, cancel func()) {
 		panic(err)
 	}
 	os.Exit(0)
+}
+
+func NewHost(ip string, port string, seed int64) (host.Host, error) {
+	var reader io.Reader
+	if seed == 0 {
+		reader = rand.Reader
+	} else {
+		reader = mrand.New(mrand.NewSource(seed))
+	}
+
+	privKey, _, err := crypto.GenerateKeyPairWithReader(crypto.RSA, 2048, reader)
+	if err != nil {
+		return nil, err
+	}
+
+	nodeMultiaddr, err := multiaddr.NewMultiaddr("/ip4/" + ip + "/tcp/" + port)
+	if err != nil {
+		return nil, err
+	}
+
+	node, err := libp2p.New(
+		libp2p.ListenAddrStrings(nodeMultiaddr.String()),
+		libp2p.Identity(privKey),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return node, nil
 }
