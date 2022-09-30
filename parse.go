@@ -40,6 +40,7 @@ type Config struct {
 	ListenAddrs addrList
 	PeerAddrs   addrList
 	ProtocolID  string
+	Rendezvous  string
 }
 
 func ParseArgs() (Config, error) {
@@ -47,6 +48,7 @@ func ParseArgs() (Config, error) {
 	flag.Var(&config.ListenAddrs, "listen", "Multiaddrs of the host created from an instance")
 	flag.Var(&config.PeerAddrs, "peers", "Multiaddrs of all peers on the network")
 	flag.StringVar(&config.ProtocolID, "protocol", "", "Protocol the peers should execute")
+	flag.StringVar(&config.Rendezvous, "rendezvous", "rendezvous-string", "Protocol the peers should execute")
 	flag.Parse()
 
 	return config, nil

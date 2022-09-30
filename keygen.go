@@ -28,7 +28,6 @@ func NewKeygenService(h host.Host) *KeygenService {
 }
 
 func (ks *KeygenService) KeygenHandler(s network.Stream) {
-	log.Printf("KeygenHandler hit.\n")
 	if err := s.Scope().SetService(ServiceName); err != nil {
 		log.Printf("Failed to set service.\n")
 		return
