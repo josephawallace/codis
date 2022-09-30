@@ -2,25 +2,19 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/crypto"
-	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/core/routing"
 	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
-	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/multiformats/go-multiaddr"
-	"io"
 	"log"
-	mrand "math/rand"
 	"os"
 	"os/signal"
-	"strconv"
 	"sync"
 	"syscall"
 
@@ -28,74 +22,25 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
+type Participant struct {
+	Ctx       context.Context
+	Node      host.Host
+	Kdht      *dht.IpfsDHT
+	Discovery *drouting.RoutingDiscovery
+}
+
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	config, err := ParseArgs()
 	if err != nil {
 		log.Panicf("Error occurred in ParseArgs: %+v\n")
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	ip := os.Getenv("IP")
-	port := os.Getenv("PORT")
-	seed, _ := strconv.Atoi(os.Getenv("SEED"))
 	psk, _ := hex.DecodeString(os.Getenv("PSK"))
-	node, err := NewHost(ip, port, int64(seed), psk)
-	if err != nil {
-		log.Panicf("Error occurred in newHost: %+v", err)
-	}
-	nodeInfo := peer.AddrInfo{
-		ID:    node.ID(),
-		Addrs: node.Addrs(),
-	}
-	nodeAddrs, _ := peer.AddrInfoToP2pAddrs(&nodeInfo)
-	log.Printf("Host ID: %+v\n", node.ID().String())
-	log.Printf("Host listening at: %+v\n", nodeAddrs)
 
-	kademliaDHT, err := dht.New(ctx, node)
-	if err != nil {
-		log.Panicf("Error occurred in dht.New: %+v\n", err)
-	}
-
-	var wg sync.WaitGroup
-	for _, peerAddr := range config.PeerAddrs {
-		peerAddrInfo, err := peer.AddrInfoFromP2pAddr(peerAddr)
-		if err != nil {
-			log.Printf("Error occurred in peer.AddrInfoFromP2pAddr: %+v\n", err)
-		}
-		node.Peerstore().AddAddrs(peerAddrInfo.ID, peerAddrInfo.Addrs, peerstore.PermanentAddrTTL)
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := node.Connect(ctx, *peerAddrInfo); err != nil {
-				log.Printf("Error occurred in host.Connect: %+v\n", err)
-			} else {
-				log.Printf("Connection established with peer: %+v\n", *peerAddrInfo)
-			}
-		}()
-		wg.Wait()
-
-		//_ = keygenService.Keygen(ctx, peerAddrInfo.ID)
-	}
-
-	routingDiscovery := drouting.NewRoutingDiscovery(kademliaDHT)
-	dutil.Advertise(ctx, routingDiscovery, config.Rendezvous)
-
-	peerCh, err := routingDiscovery.FindPeers(ctx, config.Rendezvous)
-	if err != nil {
-		log.Panicf("Error occurred in routingDiscovery.FindPeers: %+v\n")
-	}
-
-	for peerNode := range peerCh {
-		if peerNode.ID == node.ID() {
-			continue
-		}
-		log.Printf("Found peer: %+v\n", peerNode)
-	}
-
-	run(node, cancel)
+	participant := NewParticipant(ctx, config.BootstrapAddrs, psk)
+	run(participant.Node, cancel)
 }
 
 func run(h host.Host, cancel func()) {
@@ -114,44 +59,82 @@ func run(h host.Host, cancel func()) {
 	os.Exit(0)
 }
 
-func NewHost(ip string, port string, seed int64, psk pnet.PSK) (host.Host, error) {
-	var reader io.Reader
-	if seed == 0 {
-		reader = rand.Reader
-	} else {
-		reader = mrand.New(mrand.NewSource(seed))
+func NewParticipant(ctx context.Context, bootstrapAddrs []multiaddr.Multiaddr, psk pnet.PSK) *Participant {
+	node, kdht := setupNodeAndDHT(ctx, bootstrapAddrs, psk)
+	log.Printf("Created node and Kademlia DHT")
+
+	bootstrapDHT(ctx, node, kdht, bootstrapAddrs)
+	log.Printf("Bootstrapped Kademlia DHT")
+
+	routingDiscovery := drouting.NewRoutingDiscovery(kdht)
+	log.Printf("Created peer discovery service")
+
+	participant := &Participant{
+		Ctx:       ctx,
+		Node:      node,
+		Kdht:      kdht,
+		Discovery: routingDiscovery,
 	}
 
-	privKey, _, err := crypto.GenerateKeyPairWithReader(crypto.RSA, 2048, reader)
-	if err != nil {
-		return nil, err
-	}
-
-	nodeMultiaddr, err := multiaddr.NewMultiaddr("/ip4/" + ip + "/tcp/" + port)
-	if err != nil {
-		return nil, err
-	}
-	node, err := libp2p.New(
-		libp2p.ListenAddrStrings(nodeMultiaddr.String()),
-		libp2p.Identity(privKey),
-		libp2p.Transport(tcp.NewTCPTransport),
-		libp2p.Routing(NewPeerRouting),
-		libp2p.PrivateNetwork(psk),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return node, nil
+	return participant
 }
 
-func NewPeerRouting(h host.Host) (routing.PeerRouting, error) {
-	ctx := context.Background()
-	kaddht, err := dht.New(
-		ctx,
-		h,
-		dht.Mode(dht.ModeServer),
-		dht.BootstrapPeers(),
+func setupNodeAndDHT(ctx context.Context, bootstrapAddrs []multiaddr.Multiaddr, psk pnet.PSK) (host.Host, *dht.IpfsDHT) {
+	privKey, _, err := crypto.GenerateKeyPair(crypto.RSA, 2048)
+	if err != nil {
+		log.Fatalf("Failed to generate private key: %+v\n", err)
+	}
+
+	listenAddr, _ := multiaddr.NewMultiaddr("/ip4/0.0.0.0/tcp/0")
+
+	var kdht *dht.IpfsDHT
+	node, err := libp2p.New(
+		libp2p.ListenAddrs(listenAddr),
+		libp2p.Identity(privKey),
+		libp2p.PrivateNetwork(psk),
+		libp2p.Transport(tcp.NewTCPTransport),
+		libp2p.EnableAutoRelay(),
+		libp2p.Routing(func(h host.Host) (routing.PeerRouting, error) {
+			kdht, err = dht.New(ctx, h, dht.Mode(dht.ModeServer), dht.BootstrapPeers(addrsToInfos(bootstrapAddrs)...))
+			return kdht, err
+		}),
 	)
-	return kaddht, err
+	if err != nil {
+		log.Fatalf("Failed to create the host: %+v\n", err)
+	}
+
+	hostInfo := peer.AddrInfo{
+		ID:    node.ID(),
+		Addrs: node.Addrs(),
+	}
+	hostAddrs, _ := peer.AddrInfoToP2pAddrs(&hostInfo)
+	log.Printf("Host ID: %+v\n", node.ID().String())
+	log.Printf("Host listening at: %+v\n", hostAddrs)
+
+	return node, kdht
+}
+
+func bootstrapDHT(ctx context.Context, node host.Host, kdht *dht.IpfsDHT, bootstrapAddrs []multiaddr.Multiaddr) {
+	if err := kdht.Bootstrap(ctx); err != nil {
+		log.Fatalf("Failed to Bootstrap the Kademlia! %v", err)
+	}
+	log.Printf("Kademlia DHT set to Bootstrap Mode")
+
+	var wg sync.WaitGroup
+	bootstrapInfos := addrsToInfos(bootstrapAddrs)
+	numConnectedPeers := 0
+	for _, info := range bootstrapInfos {
+		p := info
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := node.Connect(ctx, p); err != nil {
+				log.Printf("Failed to connect to peer: %+v\n", err)
+			} else {
+				numConnectedPeers++
+			}
+		}()
+	}
+	wg.Wait()
+	log.Printf("Connected to %d out of %d bootstrap peers", numConnectedPeers, len(bootstrapAddrs))
 }
