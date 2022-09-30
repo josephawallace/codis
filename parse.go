@@ -37,7 +37,6 @@ func StringsToAddrs(addrStrings []string) (maddrs []multiaddr.Multiaddr, err err
 }
 
 type Config struct {
-	ListenAddrs    addrList
 	BootstrapAddrs addrList
 	ProtocolID     string
 	Rendezvous     string
@@ -45,10 +44,9 @@ type Config struct {
 
 func ParseArgs() (Config, error) {
 	config := Config{}
-	flag.Var(&config.ListenAddrs, "listen", "Multiaddrs of the host created from an instance")
 	flag.Var(&config.BootstrapAddrs, "bootstrap", "Multiaddrs of bootstrap peers on the network")
-	flag.StringVar(&config.ProtocolID, "protocol", "", "Protocol the peers should execute")
-	flag.StringVar(&config.Rendezvous, "rendezvous", "rendezvous-string", "Protocol the peers should execute")
+	flag.StringVar(&config.ProtocolID, "protocol", "/sign/ecdsa/0.0.1", "Protocol the peers should execute")
+	flag.StringVar(&config.Rendezvous, "rendezvous", "rendezvous", "Key used to specify meeting place")
 	flag.Parse()
 
 	return config, nil
