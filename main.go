@@ -24,7 +24,9 @@ func main() {
 	participant := NewParticipant(config.Rendezvous, config.BootstrapAddrs, psk)
 	if len(config.BootstrapAddrs) > 0 {
 		participant.AdvertiseConnect()
-		participant.StartKeygen(participant.Node.Peerstore().Peers()[0])
+
+		bootstrapPeers := addrsToInfos(config.BootstrapAddrs)
+		participant.StartKeygen(bootstrapPeers[0].ID)
 	}
 
 	run(participant.Node, cancel)
