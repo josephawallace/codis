@@ -1,0 +1,14 @@
+syntax = "proto3";
+package keygen;
+
+option go_package = "/pb";
+
+message KeygenArgs {
+  int32 count = 1;
+  int32 threshold = 2;
+  repeated string ids = 3;
+}
+
+message KeygenReply {
+  string message = 1;
+}

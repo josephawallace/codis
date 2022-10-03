@@ -3,6 +3,7 @@ package cmd
 import (
 	"codis/pkg/keygen"
 	"codis/pkg/p2p"
+	"codis/proto/pb"
 	"encoding/hex"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
@@ -32,16 +33,17 @@ convenient though, which is why we have this--to send test client commands from 
 			}
 			hostInfo, err := peer.AddrInfoFromP2pAddr(hostAddr)
 			if err != nil {
-				log.Fatalf("Failed to get info from host address: %+v\n")
+				log.Fatalf("Failed to get info from host address: %+v\n", err)
 			}
 
 			rpcClient := p2phost.StartRPCClient(hostAddr)
+			if protocol, _ := cmd.Flags().GetString("protocol"); protocol == keygen.ID {
+				peerIDs, _ := cmd.Flags().GetStringSlice("peers")
+				log.Printf("%s\n", peerIDs)
+				keygenArgs := pb.KeygenArgs{Count: 3, Threshold: 5, Ids: peerIDs}
+				keygenReply := pb.KeygenReply{}
 
-			protocol, _ := cmd.Flags().GetString("protocol")
-			if protocol == keygen.ID {
-				var keygenArgs []peer.ID
-				var keygenReply keygen.KeygenReply
-				if err := rpcClient.Call(hostInfo.ID, "KeygenService", "Keygen", keygenArgs, &keygenReply); err != nil {
+				if err := rpcClient.Call(hostInfo.ID, "KeygenService", "Keygen", &keygenArgs, &keygenReply); err != nil {
 					log.Fatalf("RPC call failed: %+v\n", err)
 				}
 			}
@@ -53,6 +55,10 @@ convenient though, which is why we have this--to send test client commands from 
 	cmd.Flags().String("protocol", "", "select the protocol you want your host to start")
 	if err := cmd.MarkFlagRequired("protocol"); err != nil {
 		log.Fatalf("Failed to set flag as required: %+v", err)
+	}
+	cmd.Flags().StringSlice("peers", []string{}, "peers that should start the specified protocol")
+	if err := cmd.MarkFlagRequired("peers"); err != nil {
+		log.Fatalf("Failed to set flag as required: %+v\n", err)
 	}
 	cmd.PersistentFlags().String("host", "", "codis node for this client to use as host")
 	if err := cmd.MarkPersistentFlagRequired("host"); err != nil {

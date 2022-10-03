@@ -1,28 +1,22 @@
 package keygen
 
 import (
+	"codis/proto/pb"
 	"context"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
-	libpeer "github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-msgio/protoio"
 	"log"
 )
 
 const (
 	ID          = "/keygen/0.0.1"
 	ServiceName = "codis.keygen"
+	MaxDataSize = 32 * 1024
 )
 
 type KeygenService struct {
 	Host host.Host
-}
-
-type KeygenArgs struct {
-	Peers []libpeer.ID
-}
-
-type KeygenReply struct {
-	Data []byte
 }
 
 func NewKeygenService(h host.Host) *KeygenService {
@@ -31,28 +25,44 @@ func NewKeygenService(h host.Host) *KeygenService {
 	return ks
 }
 
-func (ks *KeygenService) Keygen(ctx context.Context, args KeygenArgs, reply *KeygenReply) error {
-	log.Printf("KEYGEN!")
-	//s, err := ks.Host.NewStream(ctx, args.Peers[0], ID) // TODO: all peers
-	//if err != nil {
-	//	return err
+func (ks *KeygenService) Keygen(ctx context.Context, args *pb.KeygenArgs, reply *pb.KeygenReply) error {
+	//for _, id := range args.Ids {
+	//	if id == ks.Host.ID().String() {
+	//		log.Printf("Attempted self-dial. Continuing...\n")
+	//		continue
+	//	}
+	//	s, err := ks.Host.NewStream(ctx, peer.ID(id), ID)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	writer := protoio.NewDelimitedWriter(s)
+	//	if err := writer.WriteMsg(args); err != nil {
+	//		return err
+	//	}
 	//}
-	//
-	//keygen(s, reply)
+	if err := keygen(args, reply); err != nil {
+		return err
+	}
 	return nil
 }
 
 func keygenHandler(s network.Stream) {
-	keygen(s, &KeygenReply{})
-}
+	reader := protoio.NewDelimitedReader(s, MaxDataSize)
 
-func keygen(s network.Stream, reply *KeygenReply) {
-	if err := s.Scope().SetService(ServiceName); err != nil {
-		_ = s.Reset()
-		log.Printf("Failed to set service: %+v\n", err)
+	var args pb.KeygenArgs
+	var reply pb.KeygenReply
+	if err := reader.ReadMsg(&args); err != nil {
+		log.Printf("Failed to read from the stream: %+v\n", err)
 		return
 	}
+	if err := keygen(&args, &reply); err != nil {
+		log.Printf("Error occurred in the keygen protocol: %+v\n", err)
+	}
+}
 
+func keygen(args *pb.KeygenArgs, reply *pb.KeygenReply) error {
 	log.Printf("keygen hit!\n")
-	reply = &KeygenReply{Data: []byte{7, 14}}
+	log.Printf("args are as such: %s\n", args.String())
+	reply = &pb.KeygenReply{Message: "Hey joe!!\n"}
+	return nil
 }
