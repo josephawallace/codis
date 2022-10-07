@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"github.com/multiformats/go-multiaddr"
 
 	"codis/pkg/keygen"
 	"codis/pkg/p2p"
@@ -9,6 +10,14 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/spf13/cobra"
+)
+
+var (
+	protocol      string
+	peers         []string
+	host          string
+	protocolArgs  interface{}
+	protocolReply interface{}
 )
 
 func startClientCmd() *cobra.Command {
@@ -20,12 +29,8 @@ in Typescript, in order to leverage the slew of Node.js cryptocurrency libraries
 convenient though, which is why we have this--to send test client commands from one-off client nodes.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx := context.Background()
-			client := p2p.NewPeer(ctx, cfg.Peers[ID])
+			client := p2p.NewPeer(ctx, cfg.Peers[peerCfgId])
 
-			host, err := cmd.Flags().GetString("host")
-			if err != nil {
-				logger.Fatal(err)
-			}
 			rpcClient, err := client.StartRPCClient(ctx, host)
 			if err != nil {
 				logger.Fatal(err)
@@ -33,19 +38,20 @@ convenient though, which is why we have this--to send test client commands from 
 				logger.Debug("Started RPC client.")
 			}
 
-			protocol, err := cmd.Flags().GetString("protocol")
+			hostAddr, err := multiaddr.NewMultiaddr(host)
 			if err != nil {
 				logger.Fatal(err)
 			}
-			peers, err := cmd.Flags().GetStringSlice("peers")
+			hostInfo, err := peer.AddrInfoFromP2pAddr(hostAddr)
 			if err != nil {
 				logger.Fatal(err)
 			}
-			if protocol == keygen.ID {
-				keygenArgs := pb.KeygenArgs{Count: 4, Threshold: 2, Ids: peers}
-				keygenReply := pb.KeygenReply{}
 
-				if err = rpcClient.Call(peer.ID(host), "KeygenService", "Keygen", &keygenArgs, &keygenReply); err != nil {
+			if protocol == keygen.ID {
+				protocolArgs = pb.KeygenArgs{Count: 4, Threshold: 2, Ids: peers}
+				protocolReply = pb.KeygenReply{}
+
+				if err = rpcClient.Call(hostInfo.ID, "KeygenService", "Keygen", &protocolArgs, &protocolReply); err != nil {
 					logger.Fatal(err)
 				}
 			}
@@ -56,15 +62,15 @@ convenient though, which is why we have this--to send test client commands from 
 		},
 	}
 
-	cmd.Flags().String("protocol", "", "select the protocol you want your host to start")
+	cmd.Flags().StringVarP(&protocol, "protocol", "p", "", "protocol for host to run")
 	if err := cmd.MarkFlagRequired("protocol"); err != nil {
 		logger.Fatal(err)
 	}
-	cmd.Flags().StringSlice("peers", []string{}, "peers that should start the specified protocol")
+	cmd.Flags().StringSliceVarP(&peers, "peers", "P", []string{}, "peers involved in the protocol")
 	if err := cmd.MarkFlagRequired("peers"); err != nil {
 		logger.Fatal(err)
 	}
-	cmd.PersistentFlags().String("host", "", "codis node for this client to use as host")
+	cmd.PersistentFlags().StringVarP(&host, "host", "H", "", "peer used as host to communicate with other peers ")
 	if err := cmd.MarkPersistentFlagRequired("host"); err != nil {
 		logger.Fatal(err)
 	}

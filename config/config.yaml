@@ -1,5 +1,5 @@
 peers:
-  bootstrap-peer:
+  default-bootstrap:
     ip: '127.0.0.1'
     port: '50001'
     bootstraps:
@@ -10,7 +10,15 @@ peers:
     ip: '127.0.0.1'
     port: '50002'
     bootstraps:
-      - '/ip4/127.0.0.1/tcp/50001/p2p/QmZJ6dpcRsUmTwvjnGhzeiqvxkerPnmHvVNbA7Ux4SFdQ2'
+      - '/ip4/127.0.0.1/tcp/50001/p2p/QmVvHmMJfqWqG2WvKVdh3cmjb3FgPuxzqpnzqyNSBK9Psb'
+    network:
+      psk: '3da593207bda8e8b2fc3e9e344c3bbb0086ab24997d8b05763862f5c537fcb69'
+
+  client:
+    ip: '127.0.0.1'
+    port: '8481'
+    bootstraps:
+      - '/ip4/127.0.0.1/tcp/50001/p2p/QmVvHmMJfqWqG2WvKVdh3cmjb3FgPuxzqpnzqyNSBK9Psb'
     network:
       psk: '3da593207bda8e8b2fc3e9e344c3bbb0086ab24997d8b05763862f5c537fcb69'
 
@@ -18,7 +26,7 @@ peers:
     ip: '127.0.0.1'
     port: '50003'
     bootstraps:
-      - '/ip4/127.0.0.1/tcp/50001/p2p/QmZJ6dpcRsUmTwvjnGhzeiqvxkerPnmHvVNbA7Ux4SFdQ2'
+      - '/ip4/127.0.0.1/tcp/50001/p2p/QmVvHmMJfqWqG2WvKVdh3cmjb3FgPuxzqpnzqyNSBK9Psb'
     network:
       psk: '3da593207bda8e8b2fc3e9e344c3bbb0086ab24997d8b05763862f5c537fcb69'
 
@@ -26,6 +34,6 @@ peers:
     ip: '127.0.0.1'
     port: '50004'
     bootstraps:
-      - '/ip4/127.0.0.1/tcp/50001/p2p/QmZJ6dpcRsUmTwvjnGhzeiqvxkerPnmHvVNbA7Ux4SFdQ2'
+      - '/ip4/127.0.0.1/tcp/50001/p2p/QmVvHmMJfqWqG2WvKVdh3cmjb3FgPuxzqpnzqyNSBK9Psb'
     network:
       psk: '3da593207bda8e8b2fc3e9e344c3bbb0086ab24997d8b05763862f5c537fcb69'

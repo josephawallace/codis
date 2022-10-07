@@ -17,7 +17,7 @@ func startPeerCmd() *cobra.Command {
 		Long:  `Creates a new peer that connects to bootstrap nodes.`,
 		Run: func(c *cobra.Command, args []string) {
 			ctx := context.Background()
-			peer := p2p.NewPeer(ctx, cfg.Peers[ID])
+			peer := p2p.NewPeer(ctx, cfg.Peers[peerCfgId])
 			rendezvous := "1ae697d4da3b45469e81ef80dba7ad40"
 
 			if err := peer.AdvertiseConnect(ctx, rendezvous); err != nil {
@@ -26,11 +26,11 @@ func startPeerCmd() *cobra.Command {
 				logger.Debug("Peer advertised itself at the %s rendezvous point.", rendezvous)
 			}
 
-			if err := peer.StartRPCServer(); err != nil {
-				logger.Error(err)
-			} else {
-				logger.Debug("Started RPC server.")
-			}
+			go func() {
+				if err := peer.StartRPCServer(); err != nil {
+					logger.Error(err)
+				}
+			}()
 
 			logger.Info("Peer is running! Listening at %s.", peer.ListenAddrs)
 			peer.RunUntilCancel()

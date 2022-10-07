@@ -19,7 +19,7 @@ func startBootstrapCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx := context.Background()
 
-			bootstrap := p2p.NewPeer(ctx, cfg.Peers[ID])
+			bootstrap := p2p.NewPeer(ctx, cfg.Peers[peerCfgId])
 
 			logger.Info("Bootstrap is running! Listening at %s.", bootstrap.ListenAddrs)
 			bootstrap.RunUntilCancel()

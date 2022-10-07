@@ -8,7 +8,6 @@ import (
 )
 
 var (
-	ID     string
 	cfg    *config.Config
 	logger *log.Logger
 )
