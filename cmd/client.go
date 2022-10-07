@@ -1,13 +1,12 @@
 package cmd
 
 import (
+	"context"
+	"github.com/libp2p/go-libp2p/core/peer"
+
 	"codis/pkg/keygen"
 	"codis/pkg/p2p"
 	"codis/proto/pb"
-	"encoding/hex"
-	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/multiformats/go-multiaddr"
-	"log"
 
 	"github.com/spf13/cobra"
 )
@@ -20,49 +19,53 @@ func startClientCmd() *cobra.Command {
 in Typescript, in order to leverage the slew of Node.js cryptocurrency libraries. This makes testing client commands less
 convenient though, which is why we have this--to send test client commands from one-off client nodes.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			psk, err := hex.DecodeString(config.PSK)
-			if err != nil {
-				log.Fatalf("Failed to decode PSK")
-			}
-			p2phost := p2p.NewP2P([]multiaddr.Multiaddr{}, config.Rendezvous, psk)
+			ctx := context.Background()
+			client := p2p.NewPeer(ctx, cfg.Peer.Bootstraps, cfg.Network.PSK, cfg.Peer.KeyID)
 
-			hostAddrStr, _ := cmd.Flags().GetString("host")
-			hostAddr, err := multiaddr.NewMultiaddr(hostAddrStr)
+			host, err := cmd.Flags().GetString("host")
 			if err != nil {
-				log.Fatalf("Failed to parse host address: %+v\n", err)
+				logger.Fatal(err)
 			}
-			hostInfo, err := peer.AddrInfoFromP2pAddr(hostAddr)
+			rpcClient, err := client.StartRPCClient(ctx, host)
 			if err != nil {
-				log.Fatalf("Failed to get info from host address: %+v\n", err)
+				logger.Fatal(err)
 			}
+			logger.Debug("Started RPC client.")
 
-			rpcClient := p2phost.StartRPCClient(hostAddr)
-			if protocol, _ := cmd.Flags().GetString("protocol"); protocol == keygen.ID {
-				peerIDs, _ := cmd.Flags().GetStringSlice("peers")
-				log.Printf("%s\n", peerIDs)
-				keygenArgs := pb.KeygenArgs{Count: 3, Threshold: 5, Ids: peerIDs}
+			protocol, err := cmd.Flags().GetString("protocol")
+			if err != nil {
+				logger.Fatal(err)
+			}
+			peers, err := cmd.Flags().GetStringSlice("peers")
+			if err != nil {
+				logger.Fatal(err)
+			}
+			if protocol == keygen.ID {
+				keygenArgs := pb.KeygenArgs{Count: 4, Threshold: 2, Ids: peers}
 				keygenReply := pb.KeygenReply{}
 
-				if err := rpcClient.Call(hostInfo.ID, "KeygenService", "Keygen", &keygenArgs, &keygenReply); err != nil {
-					log.Fatalf("RPC call failed: %+v\n", err)
+				if err = rpcClient.Call(peer.ID(host), "KeygenService", "Keygen", &keygenArgs, &keygenReply); err != nil {
+					logger.Fatal(err)
 				}
 			}
 
-			p2phost.RunUntilCancel()
+			logger.Info("Client is running! Listening at %s.", client.ListenAddrs)
+
+			client.RunUntilCancel()
 		},
 	}
 
 	cmd.Flags().String("protocol", "", "select the protocol you want your host to start")
 	if err := cmd.MarkFlagRequired("protocol"); err != nil {
-		log.Fatalf("Failed to set flag as required: %+v", err)
+		logger.Fatal(err)
 	}
 	cmd.Flags().StringSlice("peers", []string{}, "peers that should start the specified protocol")
 	if err := cmd.MarkFlagRequired("peers"); err != nil {
-		log.Fatalf("Failed to set flag as required: %+v\n", err)
+		logger.Fatal(err)
 	}
 	cmd.PersistentFlags().String("host", "", "codis node for this client to use as host")
 	if err := cmd.MarkPersistentFlagRequired("host"); err != nil {
-		log.Fatalf("Failed to set flag as required: %+v", err)
+		logger.Fatal(err)
 	}
 
 	return cmd

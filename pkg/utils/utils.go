@@ -38,6 +38,15 @@ func StringsToAddrs(addrs []string) ([]multiaddr.Multiaddr, error) {
 	return multiaddrs, nil
 }
 
+func AddrsToStrings(multiaddrs []multiaddr.Multiaddr) []string {
+	addrStrs := make([]string, 0, len(multiaddrs))
+	for _, addr := range multiaddrs {
+		addrStr := addr.String()
+		addrStrs = append(addrStrs, addrStr)
+	}
+	return addrStrs
+}
+
 // StringsToInfos converts a slice containing string representations of multiaddrs into a slice containing addr infos,
 // without an intermediate function as a step
 func StringsToInfos(addrs []string) ([]peer.AddrInfo, error) {
@@ -63,7 +72,7 @@ func GetOrCreatePrivKey(keyID string) (crypto.PrivKey, error) {
 	var privKey crypto.PrivKey
 
 	keyDir, _ := filepath.Abs("keys/")
-	keyFile, _ := filepath.Abs(keyDir + "/peer_" + keyID + "_privkey.dat")
+	keyFile, _ := filepath.Abs(keyDir + "/privkey_" + keyID + ".dat")
 
 	if data, err := ioutil.ReadFile(keyFile); keyID != "" && err == nil { // key specified and data already exists
 		privKey, err = crypto.UnmarshalPrivateKey(data)

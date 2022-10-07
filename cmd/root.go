@@ -1,24 +1,28 @@
 package cmd
 
 import (
-	"codis/configs"
+	"codis/config"
+	"codis/pkg/log"
 	"github.com/spf13/cobra"
 )
 
-var config = configs.New()
+var cfg *config.Config
+var logger *log.Logger
 
 // NewRootCommand is the base command/name of the command line application.
 func NewRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "codis",
 		Short: "MPC application used to derive keys and create signatures for cryptocurrency transactions.",
-		Long: `Codis is the cryptography component of our cryptocurrency custody stack. Codis can distributively generate 
-keys, and subsequently, sign transactions with those keys also in a distributed manner. This ensures that the full
-private key data never exists in one place, so is more resilient against attack!`,
+		Long: `Codis is the cryptographic component of our cryptocurrency custody stack. Codis can distributively generate 
+keys, and subsequently, sign transactions with those keys--also in a distributed manner. This ensures that the private 
+key data never exists in it's entirety, and as such, is more resilient against attacks!`,
 	}
 
-	cmd.AddCommand(startCmd())
+	cfg = config.NewConfig()
+	logger = log.NewLogger()
 
+	cmd.AddCommand(startCmd())
 	return cmd
 }
 

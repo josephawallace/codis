@@ -1,0 +1,9 @@
+peer:
+  keyId: 'jojo'
+  ip: '0.0.0.0'
+  port: '0'
+  bootstraps: []
+  networks: []
+
+network:
+  psk: '3da593207bda8e8b2fc3e9e344c3bbb0086ab24997d8b05763862f5c537fcb69'
