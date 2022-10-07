@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"codis/config"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -18,7 +19,7 @@ import (
 	gorpc "github.com/libp2p/go-libp2p-gorpc"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	libhost "github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/peer"
+	libpeer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/core/routing"
@@ -37,30 +38,31 @@ type Peer struct {
 	logger *log.Logger
 }
 
-func NewPeer(ctx context.Context, bootstraps []string, psk string, keyID string) *Peer {
+func NewPeer(ctx context.Context, peerCfg config.Peer) *Peer {
 	logger := log.NewLogger()
-	ctx = logger.WithCtx(ctx)
 
-	bootstrapAddrs, err := utils.StringsToAddrs(bootstraps)
+	bootstrapAddrs, err := utils.StringsToAddrs(peerCfg.Bootstraps)
 	if err != nil {
 		logger.Fatal(err)
 	}
 
-	pskBytes, err := hex.DecodeString(psk)
+	pskBytes, err := hex.DecodeString(peerCfg.Network.PSK)
 	if err != nil {
 		logger.Fatal(err)
 	}
 
-	host, kdht, err := setupHostAndDHT(ctx, bootstrapAddrs, pskBytes, keyID)
+	host, kdht, err := setupHostAndDHT(ctx, bootstrapAddrs, pskBytes, peerCfg)
 	if err != nil {
 		logger.Fatal(err)
+	} else {
+		logger.Debug("Created libp2p host. Using Kademlia DHT for peer routing.")
 	}
-	logger.Debug("Created libp2p host. Using Kademlia DHT for peer routing.")
 
 	if err = kdht.Bootstrap(ctx); err != nil {
 		logger.Fatal(err)
+	} else {
+		logger.Debug("Successfully put KDHT in a bootstrapping state.")
 	}
-	logger.Debug("Successfully put KDHT in a bootstrapping state.")
 
 	bootstrapInfos, err := utils.AddrsToInfos(bootstrapAddrs)
 	if err != nil {
@@ -73,12 +75,12 @@ func NewPeer(ctx context.Context, bootstraps []string, psk string, keyID string)
 	routingDiscovery := drouting.NewRoutingDiscovery(kdht)
 	logger.Debug("Created peer discovery service.")
 
-	hostInfo := peer.AddrInfo{
+	hostInfo := libpeer.AddrInfo{
 		ID:    host.ID(),
 		Addrs: host.Addrs(),
 	}
 
-	listenAddrs, err := peer.AddrInfoToP2pAddrs(&hostInfo)
+	listenAddrs, err := libpeer.AddrInfoToP2pAddrs(&hostInfo)
 	if err != nil {
 		logger.Error(err)
 	}
@@ -111,7 +113,7 @@ func (p *Peer) AdvertiseConnect(ctx context.Context, rendezvous string) error {
 	return nil
 }
 
-func (p *Peer) StartRPCServer() error {
+func (p *Peer) StartRPCServer() error { // TODO
 	keygenService := keygen.NewKeygenService(p.host)
 	p.logger.Debug("Registered keygen service.")
 
@@ -119,7 +121,7 @@ func (p *Peer) StartRPCServer() error {
 	if err := rpcHost.Register(keygenService); err != nil {
 		return err
 	}
-	for {
+	for { // TODO: is this the right way to wait on calls?
 		time.Sleep(time.Second * 1)
 	}
 }
@@ -132,7 +134,7 @@ func (p *Peer) StartRPCClient(ctx context.Context, host string) (*gorpc.Client, 
 		return nil, err
 	}
 
-	hostInfo, err := peer.AddrInfoFromP2pAddr(hostAddr)
+	hostInfo, err := libpeer.AddrInfoFromP2pAddr(hostAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -155,13 +157,13 @@ func (p *Peer) RunUntilCancel() {
 	}
 }
 
-func setupHostAndDHT(ctx context.Context, bootstrapAddrs []multiaddr.Multiaddr, psk pnet.PSK, keyID string) (libhost.Host, *dht.IpfsDHT, error) {
-	privKey, err := utils.GetOrCreatePrivKey(keyID)
+func setupHostAndDHT(ctx context.Context, bootstrapAddrs []multiaddr.Multiaddr, psk pnet.PSK, peerCfg config.Peer) (libhost.Host, *dht.IpfsDHT, error) {
+	privKey, err := utils.GetOrCreatePrivKey(peerCfg.ID)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	listenAddr, err := multiaddr.NewMultiaddr("/ip4/0.0.0.0/tcp/0")
+	listenAddr, err := multiaddr.NewMultiaddr("/ip4/" + peerCfg.IP + "/tcp/" + peerCfg.Port)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -190,7 +192,7 @@ func setupHostAndDHT(ctx context.Context, bootstrapAddrs []multiaddr.Multiaddr, 
 	return host, kdht, nil
 }
 
-func bootstrapDHT(ctx context.Context, host libhost.Host, bootstrapInfos []peer.AddrInfo, logger *log.Logger) int {
+func bootstrapDHT(ctx context.Context, host libhost.Host, bootstrapInfos []libpeer.AddrInfo, logger *log.Logger) int {
 	peersConnected := 0
 	var wg sync.WaitGroup
 	for _, info := range bootstrapInfos {
@@ -211,7 +213,7 @@ func bootstrapDHT(ctx context.Context, host libhost.Host, bootstrapInfos []peer.
 	return peersConnected
 }
 
-func handlePeerDiscovery(ctx context.Context, host libhost.Host, peerCh <-chan peer.AddrInfo, logger *log.Logger) {
+func handlePeerDiscovery(ctx context.Context, host libhost.Host, peerCh <-chan libpeer.AddrInfo, logger *log.Logger) {
 	for info := range peerCh {
 		if info.ID == host.ID() {
 			continue

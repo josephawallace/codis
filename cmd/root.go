@@ -3,11 +3,15 @@ package cmd
 import (
 	"codis/config"
 	"codis/pkg/log"
+
 	"github.com/spf13/cobra"
 )
 
-var cfg *config.Config
-var logger *log.Logger
+var (
+	ID     string
+	cfg    *config.Config
+	logger *log.Logger
+)
 
 // NewRootCommand is the base command/name of the command line application.
 func NewRootCommand() *cobra.Command {

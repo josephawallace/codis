@@ -17,29 +17,24 @@ func startPeerCmd() *cobra.Command {
 		Long:  `Creates a new peer that connects to bootstrap nodes.`,
 		Run: func(c *cobra.Command, args []string) {
 			ctx := context.Background()
-			peer := p2p.NewPeer(ctx, cfg.Peer.Bootstraps, cfg.Network.PSK, cfg.Peer.KeyID)
+			peer := p2p.NewPeer(ctx, cfg.Peers[ID])
 			rendezvous := "1ae697d4da3b45469e81ef80dba7ad40"
 
 			if err := peer.AdvertiseConnect(ctx, rendezvous); err != nil {
 				logger.Error(err)
+			} else {
+				logger.Debug("Peer advertised itself at the %s rendezvous point.", rendezvous)
 			}
-			logger.Debug("Peer advertised itself at the %s rendezvous point.", rendezvous)
 
 			if err := peer.StartRPCServer(); err != nil {
 				logger.Error(err)
+			} else {
+				logger.Debug("Started RPC server.")
 			}
-			logger.Debug("Started RPC server.")
 
 			logger.Info("Peer is running! Listening at %s.", peer.ListenAddrs)
 			peer.RunUntilCancel()
 		},
-	}
-
-	// We differentiate a bootstrap node and a peer by whether it has any knowledge of a network outside itself. If the
-	// node is to be considered a peer, we must give a bootstrap address as the entrypoint to larger network.
-	cmd.PersistentFlags().StringSliceVar(&cfg.Peer.Bootstraps, "bootstraps", []string{}, "bootstrap addrs")
-	if err := cmd.MarkPersistentFlagRequired("bootstraps"); err != nil {
-		logger.Fatal(err)
 	}
 
 	return cmd

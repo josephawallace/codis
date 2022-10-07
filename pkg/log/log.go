@@ -2,10 +2,11 @@ package log
 
 import (
 	"context"
-	"github.com/rs/zerolog"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 type Interface interface {
@@ -27,8 +28,7 @@ func NewLogger() *Logger {
 		With().
 		Timestamp().
 		CallerWithSkipFrameCount(zerolog.CallerSkipFrameCount + skipFrameCount).
-		Logger().
-		Level(zerolog.TraceLevel)
+		Logger()
 
 	return &Logger{
 		logger: &logger,

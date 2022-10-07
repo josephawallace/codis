@@ -2,12 +2,12 @@ package cmd
 
 import (
 	"context"
-	"github.com/libp2p/go-libp2p/core/peer"
 
 	"codis/pkg/keygen"
 	"codis/pkg/p2p"
 	"codis/proto/pb"
 
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/spf13/cobra"
 )
 
@@ -20,7 +20,7 @@ in Typescript, in order to leverage the slew of Node.js cryptocurrency libraries
 convenient though, which is why we have this--to send test client commands from one-off client nodes.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx := context.Background()
-			client := p2p.NewPeer(ctx, cfg.Peer.Bootstraps, cfg.Network.PSK, cfg.Peer.KeyID)
+			client := p2p.NewPeer(ctx, cfg.Peers[ID])
 
 			host, err := cmd.Flags().GetString("host")
 			if err != nil {
@@ -29,8 +29,9 @@ convenient though, which is why we have this--to send test client commands from 
 			rpcClient, err := client.StartRPCClient(ctx, host)
 			if err != nil {
 				logger.Fatal(err)
+			} else {
+				logger.Debug("Started RPC client.")
 			}
-			logger.Debug("Started RPC client.")
 
 			protocol, err := cmd.Flags().GetString("protocol")
 			if err != nil {

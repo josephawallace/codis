@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"codis/config"
 	"io/fs"
 	"io/ioutil"
 	"os"
@@ -68,26 +69,26 @@ func StringsToInfos(addrs []string) ([]peer.AddrInfo, error) {
 // GetOrCreatePrivKey will look into the `keys` directory for a keyfile that corresponds to the key ID passed as a parameter.
 // This way, the addresses of the peers can remain consistent after they've been initialized. This is most useful for
 // debugging purposes.
-func GetOrCreatePrivKey(keyID string) (crypto.PrivKey, error) {
+func GetOrCreatePrivKey(id string) (crypto.PrivKey, error) {
 	var privKey crypto.PrivKey
 
 	keyDir, _ := filepath.Abs("keys/")
-	keyFile, _ := filepath.Abs(keyDir + "/privkey_" + keyID + ".dat")
+	keyFile, _ := filepath.Abs(keyDir + "/privkey_" + id + ".dat")
 
-	if data, err := ioutil.ReadFile(keyFile); keyID != "" && err == nil { // key specified and data already exists
+	if data, err := ioutil.ReadFile(keyFile); err == nil { // key specified and data already exists
 		privKey, err = crypto.UnmarshalPrivateKey(data)
 		if err != nil {
 			return nil, err
 		}
 	} else { // no key data found
-		if err = os.MkdirAll(keyDir, fs.ModePerm); err != nil {
-			return nil, err
-		}
 		if privKey, _, err = crypto.GenerateKeyPair(crypto.RSA, 2048); err != nil {
 			return nil, err
 		}
-		if keyID == "" { // if not given a key index, don't save a file
+		if id == config.DefaultPeer.ID { // don't save key unless given explicit peer name
 			return privKey, nil
+		}
+		if err = os.MkdirAll(keyDir, fs.ModePerm); err != nil {
+			return nil, err
 		}
 		if data, err = crypto.MarshalPrivateKey(privKey); err != nil {
 			return nil, err

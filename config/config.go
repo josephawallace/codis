@@ -1,29 +1,43 @@
 package config
 
 import (
-	"codis/pkg/log"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
-	"os"
 	"path/filepath"
+
+	"codis/pkg/log"
+
+	"gopkg.in/yaml.v2"
 )
 
 type (
 	Config struct {
-		Peer    Peer    `yaml:"peer"`
-		Network Network `yaml:"network"`
+		Peers map[string]Peer `yaml:"peers"`
 	}
 
 	Peer struct {
-		KeyID      string    `yaml:"keyId"`
-		IP         string    `yaml:"ip"`
-		Port       string    `yaml:"port"`
-		Bootstraps []string  `yaml:"bootstraps"`
-		Networks   []Network `yaml:"networks"`
+		ID         string
+		IP         string   `yaml:"ip"`
+		Port       string   `yaml:"port"`
+		Bootstraps []string `yaml:"bootstraps"`
+		Network    Network  `yaml:"networks"`
 	}
 
 	Network struct {
 		PSK string `yaml:"psk"`
+	}
+)
+
+var (
+	DefaultNetwork = Network{
+		PSK: "",
+	}
+
+	DefaultPeer = Peer{
+		ID:         "",
+		IP:         "0.0.0.0",
+		Port:       "0",
+		Bootstraps: []string{},
+		Network:    DefaultNetwork,
 	}
 )
 
@@ -42,9 +56,23 @@ func NewConfig() *Config {
 		logger.Fatal(err)
 	}
 
-	if pskEnv := os.Getenv("PSK"); pskEnv != "" {
-		cfg.Network.PSK = pskEnv
+	cfg.Peers[DefaultPeer.ID] = DefaultPeer
+
+	for key, _ := range cfg.Peers {
+		if peerCfg, ok := cfg.Peers[key]; ok {
+			peerCfg.ID = key
+			cfg.Peers[key] = peerCfg
+		}
 	}
 
 	return cfg
+}
+
+func (c *Config) CheckPeerCfgExists(id string) bool {
+	for _, peerCfg := range c.Peers {
+		if id == peerCfg.ID {
+			return true
+		}
+	}
+	return false
 }

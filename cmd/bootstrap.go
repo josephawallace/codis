@@ -1,8 +1,10 @@
 package cmd
 
 import (
-	"codis/pkg/p2p"
 	"context"
+
+	"codis/pkg/p2p"
+
 	"github.com/spf13/cobra"
 )
 
@@ -16,7 +18,8 @@ func startBootstrapCmd() *cobra.Command {
 		Long:  `Creates a bootstrap node that can be used for peer discovery.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx := context.Background()
-			bootstrap := p2p.NewPeer(ctx, cfg.Peer.Bootstraps, cfg.Network.PSK, cfg.Peer.KeyID)
+
+			bootstrap := p2p.NewPeer(ctx, cfg.Peers[ID])
 
 			logger.Info("Bootstrap is running! Listening at %s.", bootstrap.ListenAddrs)
 			bootstrap.RunUntilCancel()

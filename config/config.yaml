@@ -1,9 +1,31 @@
-peer:
-  keyId: 'jojo'
-  ip: '0.0.0.0'
-  port: '0'
-  bootstraps: []
-  networks: []
+peers:
+  bootstrap-peer:
+    ip: '127.0.0.1'
+    port: '50001'
+    bootstraps:
+    network:
+      psk: '3da593207bda8e8b2fc3e9e344c3bbb0086ab24997d8b05763862f5c537fcb69'
 
-network:
-  psk: '3da593207bda8e8b2fc3e9e344c3bbb0086ab24997d8b05763862f5c537fcb69'
+  host-peer:
+    ip: '127.0.0.1'
+    port: '50002'
+    bootstraps:
+      - '/ip4/127.0.0.1/tcp/50001/p2p/QmZJ6dpcRsUmTwvjnGhzeiqvxkerPnmHvVNbA7Ux4SFdQ2'
+    network:
+      psk: '3da593207bda8e8b2fc3e9e344c3bbb0086ab24997d8b05763862f5c537fcb69'
+
+  peer0:
+    ip: '127.0.0.1'
+    port: '50003'
+    bootstraps:
+      - '/ip4/127.0.0.1/tcp/50001/p2p/QmZJ6dpcRsUmTwvjnGhzeiqvxkerPnmHvVNbA7Ux4SFdQ2'
+    network:
+      psk: '3da593207bda8e8b2fc3e9e344c3bbb0086ab24997d8b05763862f5c537fcb69'
+
+  peer1:
+    ip: '127.0.0.1'
+    port: '50004'
+    bootstraps:
+      - '/ip4/127.0.0.1/tcp/50001/p2p/QmZJ6dpcRsUmTwvjnGhzeiqvxkerPnmHvVNbA7Ux4SFdQ2'
+    network:
+      psk: '3da593207bda8e8b2fc3e9e344c3bbb0086ab24997d8b05763862f5c537fcb69'
