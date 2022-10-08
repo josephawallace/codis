@@ -1,22 +1,24 @@
 package keygen
 
 import (
-	"context"
-
+	"bufio"
 	"codis/pkg/log"
 	"codis/pkg/utils"
 	"codis/proto/pb"
+	"context"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/bnb-chain/tss-lib/tss"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-msgio/protoio"
 )
 
 const (
 	ID          = "/keygen/0.0.1"
 	ServiceName = "codis.keygen"
-	MaxDataSize = 32 * 1024
+	MaxDataSize = 4 * 1024
 )
 
 type KeygenService struct {
@@ -49,44 +51,71 @@ func (ks *KeygenService) Keygen(ctx context.Context, args *pb.KeygenArgs, reply 
 			continue
 		}
 
-		s, err := ks.Host.NewStream(ctx, info.ID, ID)
-		if err != nil {
-			return err
-		}
-		ks.logger.Debug("New stream created with peer %s", info.ID)
-
-		writer := protoio.NewDelimitedWriter(s)
-		if err := writer.WriteMsg(args); err != nil {
+		if err = ks.shareArgs(ctx, args, info.ID, ID); err != nil {
 			return err
 		}
 	}
-	// Don't think we need to run the keygen logic on the host that received RPC call. Instead, the host will just respon
-	//if err := ks.keygen(ks.host.ID(), args, reply); err != nil {
-	//	return err
-	//}
+
 	return nil
 }
 
 func (ks *KeygenService) keygenHandler(s network.Stream) {
-	reader := protoio.NewDelimitedReader(s, MaxDataSize)
+	remotePeer := s.Conn().RemotePeer().String()
+	ks.logger.Debug("New stream created with peer %s", remotePeer)
+
+	reader := bufio.NewReader(s)
+
+	var data []byte
+	bytesRead, err := reader.Read(data)
+	ks.logger.Debug("Read %d bytes from the stream.", bytesRead)
+	if err != nil {
+		ks.logger.Error(err)
+		return
+	}
 
 	var args pb.KeygenArgs
-	if err := reader.ReadMsg(&args); err != nil {
+	err = proto.Unmarshal(data, &args)
+	if err != nil {
 		ks.logger.Error(err)
 		return
 	}
 
-	var reply pb.KeygenReply
-	if err := ks.keygen(&args, &reply); err != nil {
-		ks.logger.Error(err)
-		return
-	}
+	ks.logger.Info("Keygen args are... count: %d, threshold: %d, peers: %s", args.Count, args.Threshold, args.Ids)
+
+	//var reply pb.KeygenReply
+	//if err := keygen(&args, &reply); err != nil {
+	//	ks.logger.Error(err)
+	//	return
+	//}
 }
 
 type inboundMessage struct {
 	Data        []byte
 	From        tss.PartyID
 	IsBroadcast bool
+}
+
+func (ks *KeygenService) shareArgs(ctx context.Context, args *pb.KeygenArgs, peerId peer.ID, protocolId protocol.ID) error {
+	s, err := ks.Host.NewStream(ctx, peerId, protocolId)
+	if err != nil {
+		return err
+	} else {
+		ks.logger.Debug("New stream created with peer %s", peerId)
+	}
+	defer s.Close()
+
+	data, err := proto.Marshal(args)
+	if err != nil {
+		return err
+	}
+
+	writer := bufio.NewWriter(s)
+	bytesWritten, err := writer.Write(data)
+	ks.logger.Debug("Wrote %d bytes to the stream.", bytesWritten)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (ks *KeygenService) keygen(args *pb.KeygenArgs, reply *pb.KeygenReply) error {
