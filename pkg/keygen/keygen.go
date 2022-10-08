@@ -1,18 +1,20 @@
 package keygen
 
 import (
-	"bufio"
+	"context"
+	"io"
+
 	"codis/pkg/log"
 	"codis/pkg/utils"
 	"codis/proto/pb"
-	"context"
+
+	"github.com/bnb-chain/tss-lib/tss"
+	ggio "github.com/gogo/protobuf/io"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"google.golang.org/protobuf/proto"
-
-	"github.com/bnb-chain/tss-lib/tss"
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/network"
 )
 
 const (
@@ -51,7 +53,7 @@ func (ks *KeygenService) Keygen(ctx context.Context, args *pb.KeygenArgs, reply 
 			continue
 		}
 
-		if err = ks.shareArgs(ctx, args, info.ID, ID); err != nil {
+		if err = ks.startKeygen(ctx, args, info.ID, ID); err != nil {
 			return err
 		}
 	}
@@ -63,11 +65,7 @@ func (ks *KeygenService) keygenHandler(s network.Stream) {
 	remotePeer := s.Conn().RemotePeer().String()
 	ks.logger.Debug("New stream created with peer %s", remotePeer)
 
-	reader := bufio.NewReader(s)
-
-	var data []byte
-	bytesRead, err := reader.Read(data)
-	ks.logger.Debug("Read %d bytes from the stream.", bytesRead)
+	data, err := io.ReadAll(s)
 	if err != nil {
 		ks.logger.Error(err)
 		return
@@ -95,7 +93,7 @@ type inboundMessage struct {
 	IsBroadcast bool
 }
 
-func (ks *KeygenService) shareArgs(ctx context.Context, args *pb.KeygenArgs, peerId peer.ID, protocolId protocol.ID) error {
+func (ks *KeygenService) startKeygen(ctx context.Context, args *pb.KeygenArgs, peerId peer.ID, protocolId protocol.ID) error {
 	s, err := ks.Host.NewStream(ctx, peerId, protocolId)
 	if err != nil {
 		return err
@@ -104,15 +102,9 @@ func (ks *KeygenService) shareArgs(ctx context.Context, args *pb.KeygenArgs, pee
 	}
 	defer s.Close()
 
-	data, err := proto.Marshal(args)
-	if err != nil {
-		return err
-	}
-
-	writer := bufio.NewWriter(s)
-	bytesWritten, err := writer.Write(data)
-	ks.logger.Debug("Wrote %d bytes to the stream.", bytesWritten)
-	if err != nil {
+	writer := ggio.NewFullWriter(s)
+	if err = writer.WriteMsg(args); err != nil {
+		_ = s.Reset()
 		return err
 	}
 	return nil
