@@ -1,11 +1,11 @@
 package cmd
 
 import (
+	"codis/pkg/p2p"
+	"codis/pkg/protocols"
 	"context"
 	"github.com/multiformats/go-multiaddr"
 
-	"codis/pkg/keygen"
-	"codis/pkg/p2p"
 	"codis/proto/pb"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -14,7 +14,7 @@ import (
 
 var (
 	protocol      string
-	peers         []string
+	party         []string
 	host          string
 	protocolArgs  interface{}
 	protocolReply interface{}
@@ -35,7 +35,7 @@ convenient though, which is why we have this--to send test client commands from 
 			if err != nil {
 				logger.Fatal(err)
 			} else {
-				logger.Debug("Started RPC client.")
+				logger.Debug("started RPC client")
 			}
 
 			hostAddr, err := multiaddr.NewMultiaddr(host)
@@ -47,7 +47,7 @@ convenient though, which is why we have this--to send test client commands from 
 				logger.Fatal(err)
 			}
 
-			if protocol == keygen.ID {
+			if protocol == protocols.KeygenPID {
 				protocolArgs = pb.KeygenArgs{Count: 4, Threshold: 2, Ids: peers}
 				protocolReply = pb.KeygenReply{}
 
@@ -56,7 +56,7 @@ convenient though, which is why we have this--to send test client commands from 
 				}
 			}
 
-			logger.Info("Client is running! Listening at %s.", client.ListenAddrs)
+			logger.Info("client is running! listening at %s", client.ListenAddrs())
 
 			client.RunUntilCancel()
 		},
@@ -66,7 +66,7 @@ convenient though, which is why we have this--to send test client commands from 
 	if err := cmd.MarkFlagRequired("protocol"); err != nil {
 		logger.Fatal(err)
 	}
-	cmd.Flags().StringSliceVarP(&peers, "peers", "P", []string{}, "peers involved in the protocol")
+	cmd.Flags().StringSliceVarP(&party, "party", "P", []string{}, "peers involved in the protocol")
 	if err := cmd.MarkFlagRequired("peers"); err != nil {
 		logger.Fatal(err)
 	}

@@ -1,15 +1,14 @@
 package cmd
 
 import (
-	"context"
-
 	"codis/pkg/p2p"
+	"context"
 
 	"github.com/spf13/cobra"
 )
 
-// startPeerCmd starts a "regular" node. This node reaches out to the given bootstrap nodes to learn about the network.
-// After discovering the peers on the network, the node can participate in the cryptographic protocols.
+// startPeerCmd starts a "regular" node. This node reaches out to the given bootstrap nodes to learn about the p2p.
+// After discovering the peers on the p2p, the node can participate in the cryptographic protocols.
 func startPeerCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "peer",
@@ -23,7 +22,7 @@ func startPeerCmd() *cobra.Command {
 			if err := peer.AdvertiseConnect(ctx, rendezvous); err != nil {
 				logger.Error(err)
 			} else {
-				logger.Debug("Peer advertised itself at the %s rendezvous point.", rendezvous)
+				logger.Debug("peer advertised itself at the %s rendezvous point", rendezvous)
 			}
 
 			go func() {
@@ -32,7 +31,7 @@ func startPeerCmd() *cobra.Command {
 				}
 			}()
 
-			logger.Info("Peer is running! Listening at %s.", peer.ListenAddrs)
+			logger.Info("Peer is running! Listening at %s", peer.ListenAddrs())
 			peer.RunUntilCancel()
 		},
 	}

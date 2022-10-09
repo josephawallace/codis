@@ -2,19 +2,20 @@ package p2p
 
 import (
 	"codis/config"
+	"codis/pkg/protocols"
+	"codis/pkg/utils"
 	"context"
 	"encoding/hex"
 	"fmt"
+	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 	"time"
 
-	"codis/pkg/keygen"
 	"codis/pkg/log"
-	"codis/pkg/utils"
-
 	"github.com/libp2p/go-libp2p"
 	gorpc "github.com/libp2p/go-libp2p-gorpc"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
@@ -29,13 +30,11 @@ import (
 )
 
 type Peer struct {
-	ListenAddrs []multiaddr.Multiaddr
+	Host libhost.Host
 
-	host      libhost.Host
 	kdht      *dht.IpfsDHT
 	discovery *drouting.RoutingDiscovery
-
-	logger *log.Logger
+	logger    *log.Logger
 }
 
 func NewPeer(ctx context.Context, peerCfg config.Peer) *Peer {
@@ -55,13 +54,13 @@ func NewPeer(ctx context.Context, peerCfg config.Peer) *Peer {
 	if err != nil {
 		logger.Fatal(err)
 	} else {
-		logger.Debug("Created libp2p host. Using Kademlia DHT for peer routing.")
+		logger.Debug("created libp2p Host, using Kademlia DHT for peer routing")
 	}
 
 	if err = kdht.Bootstrap(ctx); err != nil {
 		logger.Fatal(err)
 	} else {
-		logger.Debug("Successfully put KDHT in a bootstrapping state.")
+		logger.Debug("successfully put KDHT in a bootstrapping state")
 	}
 
 	bootstrapInfos, err := utils.AddrsToInfos(bootstrapAddrs)
@@ -70,30 +69,23 @@ func NewPeer(ctx context.Context, peerCfg config.Peer) *Peer {
 	}
 
 	peersConnected := bootstrapDHT(ctx, host, bootstrapInfos, logger)
-	logger.Debug("Connected to %d/%d bootstrap peers.", peersConnected, len(bootstrapInfos))
+	logger.Debug("connected to %d/%d bootstrap peers", peersConnected, len(bootstrapInfos))
 
 	routingDiscovery := drouting.NewRoutingDiscovery(kdht)
-	logger.Debug("Created peer discovery service.")
-
-	hostInfo := libpeer.AddrInfo{
-		ID:    host.ID(),
-		Addrs: host.Addrs(),
-	}
-
-	listenAddrs, err := libpeer.AddrInfoToP2pAddrs(&hostInfo)
-	if err != nil {
-		logger.Error(err)
-	}
+	logger.Debug("created peer discovery service")
 
 	return &Peer{
-		ListenAddrs: listenAddrs,
+		Host: host,
 
-		host:      host,
 		kdht:      kdht,
 		discovery: routingDiscovery,
-
-		logger: logger,
+		logger:    logger,
 	}
+}
+
+func (p *Peer) ListenAddrs() []multiaddr.Multiaddr {
+	info := libhost.InfoFromHost(p.Host)
+	return info.Addrs
 }
 
 func (p *Peer) AdvertiseConnect(ctx context.Context, rendezvous string) error {
@@ -108,26 +100,35 @@ func (p *Peer) AdvertiseConnect(ctx context.Context, rendezvous string) error {
 		return err
 	}
 
-	go handlePeerDiscovery(ctx, p.host, peerCh, p.logger)
+	go handlePeerDiscovery(ctx, p.Host, peerCh, p.logger)
 
 	return nil
 }
 
-func (p *Peer) StartRPCServer() error { // TODO
-	keygenService := keygen.NewKeygenService(p.host)
-	p.logger.Debug("Registered keygen service.")
+func (p *Peer) StartRPCServer() error {
+	keygenService := protocols.NewKeygenService(p)
+	messageService := protocols.NewMessageService(p)
 
-	rpcHost := gorpc.NewServer(p.host, "/codis/rpc")
+	rpcHost := gorpc.NewServer(p.Host, "/codis/rpc")
+
 	if err := rpcHost.Register(keygenService); err != nil {
 		return err
 	}
-	for { // TODO: is this the right way to wait on calls?
+	p.logger.Debug("registered keygen service")
+
+	if err := rpcHost.Register(messageService); err != nil {
+		return err
+	}
+	p.logger.Debug("registered message service")
+
+	for {
 		time.Sleep(time.Second * 1)
 	}
 }
 
 func (p *Peer) StartRPCClient(ctx context.Context, host string) (*gorpc.Client, error) {
-	_ = keygen.NewKeygenService(p.host)
+	_ = protocols.NewKeygenService(p)
+	_ = protocols.NewMessageService(p)
 
 	hostAddr, err := multiaddr.NewMultiaddr(host)
 	if err != nil {
@@ -139,12 +140,24 @@ func (p *Peer) StartRPCClient(ctx context.Context, host string) (*gorpc.Client, 
 		return nil, err
 	}
 
-	if err = p.host.Connect(ctx, *hostInfo); err != nil {
+	if err = p.Host.Connect(ctx, *hostInfo); err != nil {
 		return nil, err
 	}
 
-	rpcClient := gorpc.NewClient(p.host, "/codis/rpc")
+	rpcClient := gorpc.NewClient(p.Host, "/codis/rpc")
 	return rpcClient, nil
+}
+
+func (p *Peer) GetOrCreateStream(peer libpeer.ID, pid protocol.ID) (network.Stream, error) {
+	for _, conn := range p.Host.Network().ConnsToPeer(peer) {
+		for _, s := range conn.GetStreams() {
+			if s.Protocol() == pid {
+				return s, nil
+			}
+		}
+	}
+
+	return p.Host.NewStream(context.Background(), peer, pid)
 }
 
 func (p *Peer) RunUntilCancel() {
@@ -152,7 +165,7 @@ func (p *Peer) RunUntilCancel() {
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	<-ch
 	fmt.Println("\n\nReceived signal, shutting down...")
-	if err := p.host.Close(); err != nil {
+	if err := p.Host.Close(); err != nil {
 		panic(err)
 	}
 }
@@ -203,7 +216,7 @@ func bootstrapDHT(ctx context.Context, host libhost.Host, bootstrapInfos []libpe
 			if err := host.Connect(ctx, p); err != nil {
 				logger.Error(err)
 			} else {
-				logger.Info("Connected to bootstrap node %s.", p.ID.String())
+				logger.Info("connected to bootstrap node %s", p.ID.String())
 				peersConnected++
 			}
 		}()
@@ -223,7 +236,7 @@ func handlePeerDiscovery(ctx context.Context, host libhost.Host, peerCh <-chan l
 			logger.Error(err)
 		} else {
 			host.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.PermanentAddrTTL)
-			logger.Info("Connected to peer %s.", info.ID)
+			logger.Info("connected to peer %s", info.ID)
 		}
 	}
 }

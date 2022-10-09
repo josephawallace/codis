@@ -83,7 +83,7 @@ func (l *Logger) err(level string, err error) {
 	case "panic":
 		l.logger.Panic().Err(err).Send()
 	default:
-		l.logger.Error().Msg("Invalid log level!")
+		l.logger.Error().Msg("invalid log level!")
 	}
 }
 
