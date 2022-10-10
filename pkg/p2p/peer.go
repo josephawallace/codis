@@ -7,8 +7,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/protocol"
 	"os"
 	"os/signal"
 	"sync"
@@ -40,7 +38,7 @@ type Peer struct {
 func NewPeer(ctx context.Context, peerCfg config.Peer) *Peer {
 	logger := log.NewLogger()
 
-	bootstrapAddrs, err := utils.StringsToAddrs(peerCfg.Bootstraps)
+	bootstrapAddrs, err := utils.AddrStringsToAddrs(peerCfg.Bootstraps)
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -106,8 +104,7 @@ func (p *Peer) AdvertiseConnect(ctx context.Context, rendezvous string) error {
 }
 
 func (p *Peer) StartRPCServer() error {
-	keygenService := protocols.NewKeygenService(p)
-	messageService := protocols.NewMessageService(p)
+	keygenService := protocols.NewKeygenService(p.Host)
 
 	rpcHost := gorpc.NewServer(p.Host, "/codis/rpc")
 
@@ -116,19 +113,13 @@ func (p *Peer) StartRPCServer() error {
 	}
 	p.logger.Debug("registered keygen service")
 
-	if err := rpcHost.Register(messageService); err != nil {
-		return err
-	}
-	p.logger.Debug("registered message service")
-
 	for {
 		time.Sleep(time.Second * 1)
 	}
 }
 
 func (p *Peer) StartRPCClient(ctx context.Context, host string) (*gorpc.Client, error) {
-	_ = protocols.NewKeygenService(p)
-	_ = protocols.NewMessageService(p)
+	_ = protocols.NewKeygenService(p.Host)
 
 	hostAddr, err := multiaddr.NewMultiaddr(host)
 	if err != nil {
@@ -146,18 +137,6 @@ func (p *Peer) StartRPCClient(ctx context.Context, host string) (*gorpc.Client, 
 
 	rpcClient := gorpc.NewClient(p.Host, "/codis/rpc")
 	return rpcClient, nil
-}
-
-func (p *Peer) GetOrCreateStream(peer libpeer.ID, pid protocol.ID) (network.Stream, error) {
-	for _, conn := range p.Host.Network().ConnsToPeer(peer) {
-		for _, s := range conn.GetStreams() {
-			if s.Protocol() == pid {
-				return s, nil
-			}
-		}
-	}
-
-	return p.Host.NewStream(context.Background(), peer, pid)
 }
 
 func (p *Peer) RunUntilCancel() {

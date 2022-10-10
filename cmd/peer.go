@@ -1,8 +1,9 @@
 package cmd
 
 import (
-	"codis/pkg/p2p"
 	"context"
+
+	"codis/pkg/p2p"
 
 	"github.com/spf13/cobra"
 )
@@ -31,7 +32,7 @@ func startPeerCmd() *cobra.Command {
 				}
 			}()
 
-			logger.Info("Peer is running! Listening at %s", peer.ListenAddrs())
+			logger.Info("host is running! Listening at %s", peer.ListenAddrs())
 			peer.RunUntilCancel()
 		},
 	}

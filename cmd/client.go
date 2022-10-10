@@ -1,14 +1,14 @@
 package cmd
 
 import (
+	"context"
+
 	"codis/pkg/p2p"
 	"codis/pkg/protocols"
-	"context"
-	"github.com/multiformats/go-multiaddr"
-
 	"codis/proto/pb"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multiaddr"
 	"github.com/spf13/cobra"
 )
 
@@ -48,7 +48,7 @@ convenient though, which is why we have this--to send test client commands from 
 			}
 
 			if protocol == protocols.KeygenPID {
-				protocolArgs = pb.KeygenArgs{Count: 4, Threshold: 2, Ids: peers}
+				protocolArgs = pb.KeygenArgs{Count: 3, Threshold: 2, Party: party}
 				protocolReply = pb.KeygenReply{}
 
 				if err = rpcClient.Call(hostInfo.ID, "KeygenService", "Keygen", &protocolArgs, &protocolReply); err != nil {
@@ -67,7 +67,7 @@ convenient though, which is why we have this--to send test client commands from 
 		logger.Fatal(err)
 	}
 	cmd.Flags().StringSliceVarP(&party, "party", "P", []string{}, "peers involved in the protocol")
-	if err := cmd.MarkFlagRequired("peers"); err != nil {
+	if err := cmd.MarkFlagRequired("party"); err != nil {
 		logger.Fatal(err)
 	}
 	cmd.PersistentFlags().StringVarP(&host, "host", "H", "", "peer used as host to communicate with other peers ")

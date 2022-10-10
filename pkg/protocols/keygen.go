@@ -2,21 +2,23 @@ package protocols
 
 import (
 	"bufio"
-	"context"
-	"io"
-	"math/big"
-	"time"
-
 	"codis/pkg/log"
-	"codis/pkg/p2p"
 	"codis/pkg/utils"
 	"codis/proto/pb"
+	"context"
+	"encoding/json"
+	"github.com/bnb-chain/tss-lib/ecdsa/keygen"
+	"io"
+	"io/fs"
+	"math/big"
+	"os"
+	"path/filepath"
+	"strconv"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/bnb-chain/tss-lib/ecdsa/keygen"
 	"github.com/bnb-chain/tss-lib/tss"
-	ggio "github.com/gogo/protobuf/io"
 	libhost "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -29,55 +31,76 @@ const (
 )
 
 type KeygenService struct {
-	Peer *p2p.Peer
+	Host libhost.Host
 
-	localParty tss.Party
-	partyIDs   map[peer.ID]*tss.PartyID
+	localParty *keygen.LocalParty
+	partyIDMap map[peer.ID]*tss.PartyID
+
+	outCh chan tss.Message
+	endCh chan keygen.LocalPartySaveData
+	errCh chan *tss.Error
 
 	logger *log.Logger
 }
 
-func NewKeygenService(p *p2p.Peer) *KeygenService {
+func NewKeygenService(h libhost.Host) *KeygenService {
 	logger := log.NewLogger()
 	ks := &KeygenService{
-		Peer:   p,
+		Host: h,
+
+		localParty: &keygen.LocalParty{},
+		partyIDMap: make(map[peer.ID]*tss.PartyID),
+
+		outCh: make(chan tss.Message, 1),
+		endCh: make(chan keygen.LocalPartySaveData, 1),
+		errCh: make(chan *tss.Error, 1),
+
 		logger: logger,
 	}
 
-	p.Host.SetStreamHandler(keygenStepDirectPID, ks.keygenStepHandlerDirect)
+	h.SetStreamHandler(keygenStepDirectPID, ks.keygenStepHandlerDirect)
 	logger.Debug("keygen step (direct) sub-protocol stream handler set")
 
-	p.Host.SetStreamHandler(keygenStepBroadcastPID, ks.keygenStepHandlerBroadcast)
+	h.SetStreamHandler(keygenStepBroadcastPID, ks.keygenStepHandlerBroadcast)
 	logger.Debug("keygen step (broadcast) sub-protocol stream handler set")
 
-	p.Host.SetStreamHandler(KeygenPID, ks.keygenHandler)
+	h.SetStreamHandler(KeygenPID, ks.keygenHandler)
 	logger.Debug("keygen protocol stream handler set")
 
 	return ks
 }
 
 func (ks *KeygenService) Keygen(ctx context.Context, args *pb.KeygenArgs, reply *pb.KeygenReply) error {
-	infos, err := utils.StringsToInfos(args.Ids)
+	peerIds, err := utils.AddrStringsToPeerIds(args.Party)
 	if err != nil {
 		return err
 	}
 
-	for _, info := range infos {
-		if info.ID.String() == ks.Peer.Host.ID().String() {
+	for _, id := range peerIds {
+		if id.String() == ks.Host.ID().String() {
 			continue
 		}
 
 		err = func() error {
-			s, err := ks.Peer.Host.NewStream(ctx, info.ID, KeygenPID)
+			s, err := ks.Host.NewStream(ctx, id, KeygenPID)
 			if err != nil {
 				return err
 			} else {
-				ks.logger.Debug("new stream created with peer %s", info.ID.String())
+				ks.logger.Debug("new stream created with peer %s", id.String())
 			}
 			defer s.Close()
 
-			writer := ggio.NewFullWriter(s)
-			if err = writer.WriteMsg(args); err != nil {
+			msg, err := proto.Marshal(args)
+			if err != nil {
+				return err
+			}
+
+			writer := bufio.NewWriter(s)
+			if _, err = writer.Write(msg); err != nil {
+				_ = s.Reset()
+				return err
+			}
+			if err := writer.Flush(); err != nil {
 				_ = s.Reset()
 				return err
 			}
@@ -88,12 +111,11 @@ func (ks *KeygenService) Keygen(ctx context.Context, args *pb.KeygenArgs, reply 
 		}
 	}
 
+	go ks.keygen(args)
 	return nil
 }
 
 func (ks *KeygenService) keygenHandler(s network.Stream) {
-	ks.logger.Info("keygen started!")
-
 	var args pb.KeygenArgs
 	data, err := io.ReadAll(s)
 	if err != nil {
@@ -105,19 +127,52 @@ func (ks *KeygenService) keygenHandler(s network.Stream) {
 		ks.logger.Error(err)
 		return
 	}
-	ks.logger.Info("count: %d, threshold: %d, party: %s", args.Count, args.Threshold, args.Ids)
+
+	go ks.keygen(&args)
+}
+
+func (ks *KeygenService) keygenStepHandlerDirect(s network.Stream) {
+	ks.keygenStepHandlerCommon(s, false)
+}
+
+func (ks *KeygenService) keygenStepHandlerBroadcast(s network.Stream) {
+	ks.keygenStepHandlerCommon(s, true)
+}
+
+func (ks *KeygenService) keygenStepHandlerCommon(s network.Stream, broadcast bool) {
+	data, err := io.ReadAll(s)
+	if err != nil {
+		ks.logger.Error(err)
+		return
+	}
+
+	ok, err := ks.localParty.UpdateFromBytes(data, ks.partyIDMap[s.Conn().RemotePeer()], broadcast)
+	if !ok {
+		ks.errCh <- ks.localParty.WrapError(err)
+	}
+}
+
+func (ks *KeygenService) keygen(args *pb.KeygenArgs) {
+	ks.logger.Info("keygen started!")
+	ks.logger.Info("count: %d, threshold: %d, party: %s", args.Count, args.Threshold, args.Party)
+
+	peerIds, err := utils.AddrStringsToPeerIds(args.Party)
+	if err != nil {
+		ks.logger.Error(err)
+		return
+	}
 
 	var thisPartyID *tss.PartyID
 	var unsortedPartyIDs tss.UnSortedPartyIDs
-	for _, id := range args.Ids {
+	for _, id := range peerIds {
 		key := new(big.Int)
 		key.SetBytes([]byte(id))
-		partyID := tss.NewPartyID(id, "", key)
-		if partyID.Id == ks.Peer.Host.ID().String() {
+		partyID := tss.NewPartyID(id.String(), "", key)
+		if partyID.Id == ks.Host.ID().String() {
 			thisPartyID = partyID
 		}
 
-		ks.partyIDs[s.Conn().RemotePeer()] = partyID
+		ks.partyIDMap[id] = partyID
 		unsortedPartyIDs = append(unsortedPartyIDs, partyID)
 	}
 	sortedPartyIDs := tss.SortPartyIDs(unsortedPartyIDs)
@@ -128,37 +183,36 @@ func (ks *KeygenService) keygenHandler(s network.Stream) {
 		return
 	}
 
-	outCh := make(chan tss.Message, 1)
-	endCh := make(chan keygen.LocalPartySaveData, 1)
-	errCh := make(chan *tss.Error, 1)
-
 	peerCtx := tss.NewPeerContext(sortedPartyIDs)
 	curve := tss.S256()
 	params := tss.NewParameters(curve, peerCtx, thisPartyID, len(sortedPartyIDs), int(args.Threshold))
-	ks.localParty = keygen.NewLocalParty(params, outCh, endCh, *preParams)
+	ks.localParty = keygen.NewLocalParty(params, ks.outCh, ks.endCh, *preParams).(*keygen.LocalParty)
 
-	go func() {
-		if err := ks.localParty.Start(); err != nil {
+	time.Sleep(time.Minute * 1)
+
+	go func(localParty *keygen.LocalParty, errCh chan *tss.Error) {
+		if err := localParty.Start(); err != nil {
 			errCh <- err
 		}
-	}()
+	}(ks.localParty, ks.errCh)
 
 	for {
 		select {
-		case err := <-errCh:
+		case err := <-ks.errCh:
 			ks.logger.Error(err)
 			return
-		case msg := <-outCh:
+		case msg := <-ks.outCh:
 			ks.logger.Debug("out-channel received message: %s", msg.String())
 			msgBytes, msgRouting, err := msg.WireBytes()
 			if err != nil {
 				ks.logger.Error(err)
 				return
-			}
-			if msgRouting.IsBroadcast { // use step broadcast sub-protocol
-				for peerID, _ := range ks.partyIDs {
-					err := stepKeygen(ks.Peer.Host, peerID, msgBytes, true)
-					if err != nil {
+			} else if msgRouting.IsBroadcast { // use step broadcast sub-protocol
+				for peerID, _ := range ks.partyIDMap {
+					if peerID == ks.Host.ID() {
+						continue
+					}
+					if err = stepKeygen(ks.Host, peerID, msgBytes, true); err != nil {
 						ks.logger.Error(err)
 						return
 					}
@@ -166,10 +220,9 @@ func (ks *KeygenService) keygenHandler(s network.Stream) {
 			} else { // use step direct sub-protocol
 				recipients := msg.GetTo()
 				for _, recipient := range recipients {
-					for peerID, partyID := range ks.partyIDs {
+					for peerID, partyID := range ks.partyIDMap {
 						if recipient == partyID {
-							err = stepKeygen(ks.Peer.Host, peerID, msgBytes, false)
-							if err != nil {
+							if err := stepKeygen(ks.Host, peerID, msgBytes, false); err != nil {
 								ks.logger.Error(err)
 								return
 							}
@@ -177,38 +230,30 @@ func (ks *KeygenService) keygenHandler(s network.Stream) {
 					}
 				}
 			}
+		case save := <-ks.endCh:
+			index, err := save.OriginalIndex()
+			if err != nil {
+				ks.logger.Error(err)
+			}
+
+			data, err := json.Marshal(&save)
+			if err != nil {
+				ks.logger.Error(err)
+			}
+
+			saveDir, _ := filepath.Abs("data/")
+			if _, err = os.Stat(saveDir); os.IsNotExist(err) {
+				_ = os.MkdirAll(filepath.Dir(saveDir), fs.ModePerm)
+			}
+
+			saveFile, _ := filepath.Abs(saveDir + "/keysave_" + strconv.Itoa(index) + ".json")
+			if err = os.WriteFile(saveFile, data, 0600); err != nil {
+				ks.logger.Error(err)
+				return
+			}
+			ks.logger.Info("key file saved")
 		}
 	}
-}
-
-func (ks *KeygenService) keygenStepHandlerDirect(s network.Stream) {
-	data, err := io.ReadAll(s)
-	if err != nil {
-		ks.logger.Error(err)
-		return
-	}
-
-	_, err = ks.localParty.UpdateFromBytes(data, ks.partyIDs[s.Conn().RemotePeer()], false)
-	if err != nil {
-		ks.logger.Error(err)
-		return
-	}
-	ks.logger.Debug("local party updated via direct message")
-}
-
-func (ks *KeygenService) keygenStepHandlerBroadcast(s network.Stream) {
-	data, err := io.ReadAll(s)
-	if err != nil {
-		ks.logger.Error(err)
-		return
-	}
-
-	_, err = ks.localParty.UpdateFromBytes(data, ks.partyIDs[s.Conn().RemotePeer()], true)
-	if err != nil {
-		ks.logger.Error(err)
-		return
-	}
-	ks.logger.Debug("local party updated via broadcast message")
 }
 
 func stepKeygen(host libhost.Host, peer peer.ID, msg []byte, broadcast bool) error {

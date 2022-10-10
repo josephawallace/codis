@@ -1,8 +1,9 @@
 package cmd
 
 import (
-	"codis/pkg/p2p"
 	"context"
+
+	"codis/pkg/p2p"
 
 	"github.com/spf13/cobra"
 )

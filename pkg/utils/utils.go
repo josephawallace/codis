@@ -25,9 +25,9 @@ func AddrsToInfos(multiaddrs []multiaddr.Multiaddr) ([]peer.AddrInfo, error) {
 	return infos, nil
 }
 
-// StringsToAddrs converts a slice containing string representations of multiaddrs into a slice containing multiaddr objects
+// AddrStringsToAddrs converts a slice containing string representations of multiaddrs into a slice containing multiaddr objects
 // from libp2p
-func StringsToAddrs(addrs []string) ([]multiaddr.Multiaddr, error) {
+func AddrStringsToAddrs(addrs []string) ([]multiaddr.Multiaddr, error) {
 	multiaddrs := make([]multiaddr.Multiaddr, 0, len(addrs))
 	for _, addr := range addrs {
 		newAddr, err := multiaddr.NewMultiaddr(addr)
@@ -39,7 +39,7 @@ func StringsToAddrs(addrs []string) ([]multiaddr.Multiaddr, error) {
 	return multiaddrs, nil
 }
 
-func AddrsToStrings(multiaddrs []multiaddr.Multiaddr) []string {
+func AddrsToAddrStrings(multiaddrs []multiaddr.Multiaddr) []string {
 	addrStrs := make([]string, 0, len(multiaddrs))
 	for _, addr := range multiaddrs {
 		addrStr := addr.String()
@@ -48,9 +48,21 @@ func AddrsToStrings(multiaddrs []multiaddr.Multiaddr) []string {
 	return addrStrs
 }
 
-// StringsToInfos converts a slice containing string representations of multiaddrs into a slice containing addr infos,
+func AddrStringsToPeerIds(addrs []string) ([]peer.ID, error) {
+	peerIds := make([]peer.ID, 0, len(addrs))
+	for _, addr := range addrs {
+		info, err := peer.AddrInfoFromString(addr)
+		if err != nil {
+			return nil, err
+		}
+		peerIds = append(peerIds, info.ID)
+	}
+	return peerIds, nil
+}
+
+// AddrStringsToInfos converts a slice containing string representations of multiaddrs into a slice containing addr infos,
 // without an intermediate function as a step
-func StringsToInfos(addrs []string) ([]peer.AddrInfo, error) {
+func AddrStringsToInfos(addrs []string) ([]peer.AddrInfo, error) {
 	infos := make([]peer.AddrInfo, 0, len(addrs))
 	for _, addrStr := range addrs {
 		addr, err := multiaddr.NewMultiaddr(addrStr)
