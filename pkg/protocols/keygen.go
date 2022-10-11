@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -33,7 +34,9 @@ const (
 type KeygenService struct {
 	Host libhost.Host
 
-	localParty *keygen.LocalParty
+	localParty   *keygen.LocalParty
+	localPartyCh chan *keygen.LocalParty
+
 	partyIDMap map[peer.ID]*tss.PartyID
 
 	outCh chan tss.Message
@@ -41,6 +44,8 @@ type KeygenService struct {
 	errCh chan *tss.Error
 
 	logger *log.Logger
+
+	mu sync.Mutex
 }
 
 func NewKeygenService(h libhost.Host) *KeygenService {
@@ -48,7 +53,9 @@ func NewKeygenService(h libhost.Host) *KeygenService {
 	ks := &KeygenService{
 		Host: h,
 
-		localParty: &keygen.LocalParty{},
+		localParty:   nil,
+		localPartyCh: make(chan *keygen.LocalParty, 1),
+
 		partyIDMap: make(map[peer.ID]*tss.PartyID),
 
 		outCh: make(chan tss.Message, 1),
@@ -56,6 +63,8 @@ func NewKeygenService(h libhost.Host) *KeygenService {
 		errCh: make(chan *tss.Error, 1),
 
 		logger: logger,
+
+		mu: sync.Mutex{},
 	}
 
 	h.SetStreamHandler(keygenStepDirectPID, ks.keygenStepHandlerDirect)
@@ -116,6 +125,9 @@ func (ks *KeygenService) Keygen(ctx context.Context, args *pb.KeygenArgs, reply 
 }
 
 func (ks *KeygenService) keygenHandler(s network.Stream) {
+	ks.mu.Lock()
+	defer ks.mu.Unlock()
+
 	var args pb.KeygenArgs
 	data, err := io.ReadAll(s)
 	if err != nil {
@@ -132,14 +144,25 @@ func (ks *KeygenService) keygenHandler(s network.Stream) {
 }
 
 func (ks *KeygenService) keygenStepHandlerDirect(s network.Stream) {
+	ks.mu.Lock()
+	defer ks.mu.Unlock()
+
 	ks.keygenStepHandlerCommon(s, false)
 }
 
 func (ks *KeygenService) keygenStepHandlerBroadcast(s network.Stream) {
+	ks.mu.Lock()
+	defer ks.mu.Unlock()
+
 	ks.keygenStepHandlerCommon(s, true)
 }
 
 func (ks *KeygenService) keygenStepHandlerCommon(s network.Stream, broadcast bool) {
+	if ks.localParty == nil {
+		<-ks.localPartyCh
+		ks.logger.Debug("waiting for local party to be initialized")
+	}
+
 	data, err := io.ReadAll(s)
 	if err != nil {
 		ks.logger.Error(err)
@@ -155,6 +178,7 @@ func (ks *KeygenService) keygenStepHandlerCommon(s network.Stream, broadcast boo
 func (ks *KeygenService) keygen(args *pb.KeygenArgs) {
 	ks.logger.Info("keygen started!")
 	ks.logger.Info("count: %d, threshold: %d, party: %s", args.Count, args.Threshold, args.Party)
+	ks.localParty = nil
 
 	peerIds, err := utils.AddrStringsToPeerIds(args.Party)
 	if err != nil {
@@ -187,8 +211,7 @@ func (ks *KeygenService) keygen(args *pb.KeygenArgs) {
 	curve := tss.S256()
 	params := tss.NewParameters(curve, peerCtx, thisPartyID, len(sortedPartyIDs), int(args.Threshold))
 	ks.localParty = keygen.NewLocalParty(params, ks.outCh, ks.endCh, *preParams).(*keygen.LocalParty)
-
-	time.Sleep(time.Minute * 1)
+	ks.localPartyCh <- ks.localParty
 
 	go func(localParty *keygen.LocalParty, errCh chan *tss.Error) {
 		if err := localParty.Start(); err != nil {
@@ -241,12 +264,10 @@ func (ks *KeygenService) keygen(args *pb.KeygenArgs) {
 				ks.logger.Error(err)
 			}
 
-			saveDir, _ := filepath.Abs("data/")
-			if _, err = os.Stat(saveDir); os.IsNotExist(err) {
-				_ = os.MkdirAll(filepath.Dir(saveDir), fs.ModePerm)
+			saveFile, _ := filepath.Abs("saves/keysave_" + strconv.Itoa(index) + ".json")
+			if _, err = os.Stat(filepath.Dir(saveFile)); os.IsNotExist(err) {
+				_ = os.MkdirAll(filepath.Dir(saveFile), fs.ModePerm)
 			}
-
-			saveFile, _ := filepath.Abs(saveDir + "/keysave_" + strconv.Itoa(index) + ".json")
 			if err = os.WriteFile(saveFile, data, 0600); err != nil {
 				ks.logger.Error(err)
 				return
