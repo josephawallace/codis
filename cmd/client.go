@@ -47,7 +47,7 @@ convenient though, which is why we have this--to send test client commands from 
 				logger.Fatal(err)
 			}
 
-			if protocol == protocols.KeygenPID {
+			if protocol == protocols.KeygenPId {
 				protocolArgs = pb.KeygenArgs{Count: 3, Threshold: 2, Party: party}
 				protocolReply = pb.KeygenReply{}
 

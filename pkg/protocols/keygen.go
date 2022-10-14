@@ -42,7 +42,7 @@ type KeygenService struct {
 	errCh        chan *tss.Error
 	partyIdMap   map[peer.ID]*tss.PartyID
 	logger       *log.Logger
-	mu           sync.Mutex
+	mu           *sync.Mutex
 }
 
 // NewKeygenService constructs the initial state for the keygen service, sets the stream handlers for the protocols
@@ -60,7 +60,7 @@ func NewKeygenService(h host.Host) *KeygenService {
 		errCh:        make(chan *tss.Error, 1),
 		partyIdMap:   make(map[peer.ID]*tss.PartyID),
 		logger:       logger,
-		mu:           sync.Mutex{},
+		mu:           &sync.Mutex{},
 	}
 
 	h.SetStreamHandler(keygenStepDirectPId, ks.keygenStepHandlerDirect)
@@ -151,15 +151,11 @@ func (ks *KeygenService) keygenHandler(s network.Stream) {
 
 // keygenStepHandlerDirect reads tss messages sent to this peer directly and updates the local party
 func (ks *KeygenService) keygenStepHandlerDirect(s network.Stream) {
-	ks.mu.Lock()
-	defer ks.mu.Unlock()
 	ks.keygenStepHandlerCommon(s, false)
 }
 
 // keygenStepHandlerBroadcast reads tss messages sent as a broadcast and updates the local party
 func (ks *KeygenService) keygenStepHandlerBroadcast(s network.Stream) {
-	ks.mu.Lock()
-	defer ks.mu.Unlock()
 	ks.keygenStepHandlerCommon(s, true)
 }
 
@@ -195,7 +191,7 @@ func (ks *KeygenService) keygen(args *pb.KeygenArgs) {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 
-	ks.Cleanup()
+	ks.reset()
 	ks.logger.Info("keygen started!")
 	ks.logger.Info("count: %d, threshold: %d, party: %s", args.Count, args.Threshold, args.Party)
 
@@ -305,8 +301,8 @@ func (ks *KeygenService) keygen(args *pb.KeygenArgs) {
 	}
 }
 
-// Cleanup resets the fields of the keygen service state that are involved in the keygen protocol execution.
-func (ks *KeygenService) Cleanup() {
+// reset clears the fields of the keygen service state that are involved in the keygen protocol execution.
+func (ks *KeygenService) reset() {
 	ks.localParty = nil
 	ks.localPartyCh = make(chan *keygen.LocalParty, 1)
 	ks.partyIdMap = make(map[peer.ID]*tss.PartyID)
