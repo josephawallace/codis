@@ -3,7 +3,7 @@ package cmd
 import (
 	"errors"
 
-	"codis/config"
+	"codis/configs"
 
 	"github.com/spf13/cobra"
 )
@@ -25,7 +25,7 @@ peer discovery. Otherwise, the node can be a peer, in which case it connects to 
 		},
 	}
 
-	cmd.PersistentFlags().StringVarP(&peerCfgId, "id", "i", config.DefaultPeer.ID, "name of private key to use for peer identity")
+	cmd.PersistentFlags().StringVarP(&peerCfgId, "id", "i", configs.DefaultPeer.ID, "name of private key to use for peer identity")
 
 	cmd.AddCommand(startPeerCmd())
 	cmd.AddCommand(startBootstrapCmd())

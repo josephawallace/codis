@@ -1,19 +1,20 @@
 package p2p
 
 import (
-	"codis/config"
-	"codis/pkg/protocols"
-	"codis/pkg/utils"
+	"codis/configs"
+	"codis/log"
+	"codis/protocols"
+	"codis/utils"
 	"context"
 	"encoding/hex"
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	"codis/pkg/log"
 	"github.com/libp2p/go-libp2p"
 	gorpc "github.com/libp2p/go-libp2p-gorpc"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
@@ -35,7 +36,7 @@ type Peer struct {
 	logger    *log.Logger
 }
 
-func NewPeer(ctx context.Context, peerCfg config.Peer) *Peer {
+func NewPeer(ctx context.Context, peerCfg configs.Peer) *Peer {
 	logger := log.NewLogger()
 
 	bootstrapAddrs, err := utils.AddrStringsToAddrs(peerCfg.Bootstraps)
@@ -52,13 +53,13 @@ func NewPeer(ctx context.Context, peerCfg config.Peer) *Peer {
 	if err != nil {
 		logger.Fatal(err)
 	} else {
-		logger.Debug("created libp2p Host, using Kademlia DHT for peer routing")
+		logger.Debug("created libp2p host, using kademlia dht for peer routing")
 	}
 
 	if err = kdht.Bootstrap(ctx); err != nil {
 		logger.Fatal(err)
 	} else {
-		logger.Debug("successfully put KDHT in a bootstrapping state")
+		logger.Debug("successfully put kdht in a bootstrapping state")
 	}
 
 	bootstrapInfos, err := utils.AddrsToInfos(bootstrapAddrs)
@@ -81,9 +82,19 @@ func NewPeer(ctx context.Context, peerCfg config.Peer) *Peer {
 	}
 }
 
-func (p *Peer) ListenAddrs() []multiaddr.Multiaddr {
+func (p *Peer) ListenAddrs() string {
 	info := libhost.InfoFromHost(p.Host)
-	return info.Addrs
+	addrs, err := libpeer.AddrInfoToP2pAddrs(info)
+	if err != nil {
+		p.logger.Error(err)
+		return ""
+	}
+
+	addrStrs := make([]string, 0, len(addrs))
+	for _, addr := range addrs {
+		addrStrs = append(addrStrs, addr.String())
+	}
+	return strings.Join(addrStrs, ",")
 }
 
 func (p *Peer) AdvertiseConnect(ctx context.Context, rendezvous string) error {
@@ -149,7 +160,7 @@ func (p *Peer) RunUntilCancel() {
 	}
 }
 
-func setupHostAndDHT(ctx context.Context, bootstrapAddrs []multiaddr.Multiaddr, psk pnet.PSK, peerCfg config.Peer) (libhost.Host, *dht.IpfsDHT, error) {
+func setupHostAndDHT(ctx context.Context, bootstrapAddrs []multiaddr.Multiaddr, psk pnet.PSK, peerCfg configs.Peer) (libhost.Host, *dht.IpfsDHT, error) {
 	privKey, err := utils.GetOrCreatePrivKey(peerCfg.ID)
 	if err != nil {
 		return nil, nil, err

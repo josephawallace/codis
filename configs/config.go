@@ -1,10 +1,9 @@
-package config
+package configs
 
 import (
-	"io/ioutil"
+	"codis/log"
+	"os"
 	"path/filepath"
-
-	"codis/pkg/log"
 
 	"gopkg.in/yaml.v2"
 )
@@ -18,7 +17,8 @@ type (
 		ID         string
 		IP         string   `yaml:"ip"`
 		Port       string   `yaml:"port"`
-		Bootstraps []string `yaml:"bootstraps"`
+		Host       string   `yaml:"host,omitempty"`
+		Bootstraps []string `yaml:"bootstraps,omitempty"`
 		Network    Network  `yaml:"networks"`
 	}
 
@@ -44,8 +44,8 @@ var (
 func NewConfig() *Config {
 	logger := log.NewLogger()
 
-	configFile, _ := filepath.Abs("config/config.yaml")
-	data, err := ioutil.ReadFile(configFile)
+	configFile, _ := filepath.Abs("configs/config.yaml")
+	data, err := os.ReadFile(configFile)
 	if err != nil {
 		logger.Fatal(err)
 	}

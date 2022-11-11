@@ -1,0 +1,15 @@
+syntax = "proto3";
+package sign;
+
+option go_package = "/pb";
+
+message SignArgs {
+  uint32 count = 1;
+  uint32 threshold = 2;
+  string alg = 3;
+  repeated string party = 4;
+}
+
+message SignReply {
+  string signature = 1;
+}

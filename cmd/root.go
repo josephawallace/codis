@@ -1,14 +1,13 @@
 package cmd
 
 import (
-	"codis/config"
-	"codis/pkg/log"
-
+	"codis/configs"
+	"codis/log"
 	"github.com/spf13/cobra"
 )
 
 var (
-	cfg    *config.Config
+	cfg    *configs.Config
 	logger *log.Logger
 )
 
@@ -22,7 +21,7 @@ keys, and subsequently, sign transactions with those keys--also in a distributed
 key data never exists in it's entirety, and as such, is more resilient against attacks!`,
 	}
 
-	cfg = config.NewConfig()
+	cfg = configs.NewConfig()
 	logger = log.NewLogger()
 
 	cmd.AddCommand(startCmd())

@@ -1,0 +1,51 @@
+# List of peer configurations that can be invoked by specifying the corresponding key as the ID for starting a node from
+# the command line.
+peers:
+
+  # Bootstrap nodes will be pinged by peers joining the p2p. The peers that connect to the bootstrap nodes will be
+  # given the list of peers that the bootstrap node knows about, this way the p2p participants can learn about the
+  # p2p more quickly. Since this node will "start" our peer-to-peer p2p, we don't give it any bootstrap nodes itself
+  # to connect with.
+  bootstrap:
+    ip: '0.0.0.0'
+    port: '50001'
+    network:
+      psk: '3da593207bda8e8b2fc3e9e344c3bbb0086ab24997d8b05763862f5c537fcb69'
+
+  # Service nodes will perform the work of the implemented DKG and TSS protocols. A service node can be configured to have an
+  # associated client, or can be left "client-less." A client-less node will perform any task that is requested of it,
+  # without needing authorizations. On the other hand, nodes configured with a client may require communication
+  # with its client to complete requests.
+  service0:
+    ip: '127.0.0.1'
+    port: '50003'
+    bootstraps:
+      - '/ip4/10.5.0.2/tcp/50001/p2p/QmRVHjAThKg8YZ4JA28WSRRMCmGdamr7d8JryPnrUW7uEv'
+      - '/ip4/127.0.0.1/tcp/50001/p2p/QmRVHjAThKg8YZ4JA28WSRRMCmGdamr7d8JryPnrUW7uEv'
+    network:
+      psk: '3da593207bda8e8b2fc3e9e344c3bbb0086ab24997d8b05763862f5c537fcb69'
+  service1:
+    ip: '127.0.0.1'
+    port: '50004'
+    bootstraps:
+      - '/ip4/127.0.0.1/tcp/50001/p2p/QmRVHjAThKg8YZ4JA28WSRRMCmGdamr7d8JryPnrUW7uEv'
+    network:
+      psk: '3da593207bda8e8b2fc3e9e344c3bbb0086ab24997d8b05763862f5c537fcb69'
+  service2:
+    ip: '127.0.0.1'
+    port: '50005'
+    bootstraps:
+      - '/ip4/10.5.0.2/tcp/50001/p2p/QmRVHjAThKg8YZ4JA28WSRRMCmGdamr7d8JryPnrUW7uEv'
+      - '/ip4/127.0.0.1/tcp/50001/p2p/QmRVHjAThKg8YZ4JA28WSRRMCmGdamr7d8JryPnrUW7uEv'
+    network:
+      psk: '3da593207bda8e8b2fc3e9e344c3bbb0086ab24997d8b05763862f5c537fcb69'
+
+  # Client nodes will interact with its host service node, as well as other client nodes. They are responsible for coordinating
+  # args, replies, and authentication with other clients, then sending the gathered results to their designated service
+  # peer to coordinate with the other service peers.
+  client:
+    ip: '127.0.0.1'
+    port: '8481'
+    host: '/ip4/127.0.0.1/tcp/50003/p2p/QmQMykLoJJhcxXyqxhFC1QC3pwRSySzqDMvvptVn9HNnHB'
+    network:
+      psk: '3da593207bda8e8b2fc3e9e344c3bbb0086ab24997d8b05763862f5c537fcb69'

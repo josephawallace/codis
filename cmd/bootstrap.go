@@ -3,7 +3,7 @@ package cmd
 import (
 	"context"
 
-	"codis/pkg/p2p"
+	"codis/p2p"
 
 	"github.com/spf13/cobra"
 )
@@ -21,7 +21,7 @@ func startBootstrapCmd() *cobra.Command {
 
 			bootstrap := p2p.NewPeer(ctx, cfg.Peers[peerCfgId])
 
-			logger.Info("bootstrap is running! listening at %s", bootstrap.ListenAddrs())
+			logger.Info("listening at %s", bootstrap.ListenAddrs())
 			bootstrap.RunUntilCancel()
 		},
 	}

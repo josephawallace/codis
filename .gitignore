@@ -1,8 +1,11 @@
-# Keygen save files
-saves/
+# Logs
+logs/
 
-# Misc. Data
-data/
+# Peer keys
+keys/
+
+# Save data
+data/saves/
 
 # JetBrains
 .idea/

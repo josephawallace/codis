@@ -6,7 +6,8 @@ option go_package = "/pb";
 message KeygenArgs {
   int32 count = 1;
   int32 threshold = 2;
-  repeated string party = 3;
+  string alg = 3;
+  repeated string party = 4;
 }
 
 message KeygenReply {

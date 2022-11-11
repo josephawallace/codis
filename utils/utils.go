@@ -1,7 +1,8 @@
 package utils
 
 import (
-	"codis/config"
+	"codis/configs"
+	b58 "github.com/mr-tron/base58"
 	"io/fs"
 	"io/ioutil"
 	"os"
@@ -60,6 +61,23 @@ func AddrStringsToPeerIds(addrs []string) ([]peer.ID, error) {
 	return peerIds, nil
 }
 
+func PeerIdStringsToPeerIds(peerIdStrs []string) ([]peer.ID, error) {
+	peerIds := make([]peer.ID, 0, len(peerIdStrs))
+	for _, peerIdStr := range peerIdStrs {
+		peerIdBytes, err := b58.Decode(peerIdStr)
+		if err != nil {
+			return nil, err
+		}
+
+		peerId, err := peer.IDFromBytes(peerIdBytes)
+		if err != nil {
+			return nil, err
+		}
+		peerIds = append(peerIds, peerId)
+	}
+	return peerIds, nil
+}
+
 // AddrStringsToInfos converts a slice containing string representations of multiaddrs into a slice containing addr infos,
 // without an intermediate function as a step
 func AddrStringsToInfos(addrs []string) ([]peer.AddrInfo, error) {
@@ -96,7 +114,7 @@ func GetOrCreatePrivKey(id string) (crypto.PrivKey, error) {
 		if privKey, _, err = crypto.GenerateKeyPair(crypto.RSA, 2048); err != nil {
 			return nil, err
 		}
-		if id == config.DefaultPeer.ID { // don't save key unless given explicit peer name
+		if id == configs.DefaultPeer.ID { // don't save key unless given explicit peer name
 			return privKey, nil
 		}
 		if err = os.MkdirAll(keyDir, fs.ModePerm); err != nil {

@@ -2,6 +2,9 @@ package protocols
 
 import (
 	"bufio"
+	"codis/log"
+	"codis/proto/pb"
+	"codis/utils"
 	"context"
 	"encoding/json"
 	"io"
@@ -13,13 +16,10 @@ import (
 	"sync"
 	"time"
 
-	"codis/pkg/log"
-	"codis/pkg/utils"
-	"codis/proto/pb"
-
 	"google.golang.org/protobuf/proto"
 
-	"github.com/bnb-chain/tss-lib/ecdsa/keygen"
+	eckg "github.com/bnb-chain/tss-lib/ecdsa/keygen"
+	edkg "github.com/bnb-chain/tss-lib/eddsa/keygen"
 	"github.com/bnb-chain/tss-lib/tss"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -35,10 +35,11 @@ const (
 // KeygenService defines the state and functions needed to perform distributed key generation.
 type KeygenService struct {
 	host         host.Host
-	localParty   *keygen.LocalParty
-	localPartyCh chan *keygen.LocalParty
+	localParty   tss.Party
+	localPartyCh chan tss.Party
 	outCh        chan tss.Message
-	endCh        chan keygen.LocalPartySaveData
+	ecEndCh      chan eckg.LocalPartySaveData
+	edEndCh      chan edkg.LocalPartySaveData
 	errCh        chan *tss.Error
 	partyIdMap   map[peer.ID]*tss.PartyID
 	logger       *log.Logger
@@ -54,9 +55,10 @@ func NewKeygenService(h host.Host) *KeygenService {
 	ks := &KeygenService{
 		host:         h,
 		localParty:   nil,
-		localPartyCh: make(chan *keygen.LocalParty, 1),
+		localPartyCh: make(chan tss.Party, 1),
 		outCh:        make(chan tss.Message, 1),
-		endCh:        make(chan keygen.LocalPartySaveData, 1),
+		ecEndCh:      make(chan eckg.LocalPartySaveData, 1),
+		edEndCh:      make(chan edkg.LocalPartySaveData, 1),
 		errCh:        make(chan *tss.Error, 1),
 		partyIdMap:   make(map[peer.ID]*tss.PartyID),
 		logger:       logger,
@@ -80,7 +82,7 @@ func NewKeygenService(h host.Host) *KeygenService {
 // threshold are for the party and the multiaddrs of each participant. Using these details, we can expect our host to
 // execute the protocol and fill out the reply structure to be read back by the client.
 func (ks *KeygenService) Keygen(ctx context.Context, args *pb.KeygenArgs, _ *pb.KeygenReply) error {
-	peerIds, err := utils.AddrStringsToPeerIds(args.Party)
+	peerIds, err := utils.PeerIdStringsToPeerIds(args.Party)
 	if err != nil {
 		return err
 	}
@@ -193,15 +195,14 @@ func (ks *KeygenService) keygen(args *pb.KeygenArgs) {
 
 	ks.reset()
 	ks.logger.Info("keygen started!")
-	ks.logger.Info("count: %d, threshold: %d, party: %s", args.Count, args.Threshold, args.Party)
+	ks.logger.Info("count: %d, threshold: %d, alg: %s, party: %s", args.Count, args.Threshold, args.Alg, args.Party)
 
-	peerIds, err := utils.AddrStringsToPeerIds(args.Party)
+	peerIds, err := utils.PeerIdStringsToPeerIds(args.Party)
 	if err != nil {
 		ks.logger.Error(err)
 		return
 	}
 
-	// 1. get the sorted party ids (sorted so each peer has the same ordering)
 	var thisPartyId *tss.PartyID
 	var unsortedPartyIds tss.UnSortedPartyIDs
 	for _, peerId := range peerIds {
@@ -217,30 +218,31 @@ func (ks *KeygenService) keygen(args *pb.KeygenArgs) {
 	}
 	sortedPartyIds := tss.SortPartyIDs(unsortedPartyIds)
 
-	// 2. generate the gg18 preparams locally to save on communication rounds
-	preParams, err := keygen.GeneratePreParams(1 * time.Minute)
-	if err != nil {
-		ks.logger.Error(err)
-		return
-	}
-
-	// 3. initialize and start the local party
 	peerCtx := tss.NewPeerContext(sortedPartyIds)
-	curve := tss.S256()
-	params := tss.NewParameters(curve, peerCtx, thisPartyId, len(sortedPartyIds), int(args.Threshold))
-	ks.localParty = keygen.NewLocalParty(params, ks.outCh, ks.endCh, *preParams).(*keygen.LocalParty)
+
+	if args.Alg == "eddsa" {
+		curve := tss.Edwards()
+		params := tss.NewParameters(curve, peerCtx, thisPartyId, len(sortedPartyIds), int(args.Threshold))
+		ks.localParty = edkg.NewLocalParty(params, ks.outCh, ks.edEndCh).(*edkg.LocalParty)
+	} else {
+		curve := tss.S256()
+		preParams, err := eckg.GeneratePreParams(1 * time.Minute)
+		if err != nil {
+			ks.logger.Error(err)
+			return
+		}
+		params := tss.NewParameters(curve, peerCtx, thisPartyId, len(sortedPartyIds), int(args.Threshold))
+		ks.localParty = eckg.NewLocalParty(params, ks.outCh, ks.ecEndCh, *preParams).(*eckg.LocalParty)
+	}
 	ks.localPartyCh <- ks.localParty // local party initialized and safe to use (for step handlers)
 
-	go func(localParty *keygen.LocalParty, errCh chan *tss.Error) {
+	go func(localParty tss.Party, errCh chan *tss.Error) {
 		if err := localParty.Start(); err != nil {
 			errCh <- err
 		}
 	}(ks.localParty, ks.errCh)
 
-	// 4. wait on outbound data given to us from our local party's processing
-	// 5. send that data to the appropriate participants for them to update their local parties from
 	for {
-		// 4.
 		select {
 		case err := <-ks.errCh:
 			ks.logger.Error(err)
@@ -256,7 +258,6 @@ func (ks *KeygenService) keygen(args *pb.KeygenArgs) {
 					if peerID == ks.host.ID() {
 						continue // don't send message back to self
 					}
-					// 5.
 					if err = stepKeygen(ks.host, peerID, msgBytes, true); err != nil {
 						ks.logger.Error(err)
 						return
@@ -276,19 +277,18 @@ func (ks *KeygenService) keygen(args *pb.KeygenArgs) {
 					}
 				}
 			}
-		// 6. save the keygen data to disk on completion of the protocol
-		case save := <-ks.endCh:
+		case save := <-ks.ecEndCh:
 			index, err := save.OriginalIndex()
 			if err != nil {
 				ks.logger.Error(err)
 			}
+			saveFile, _ := filepath.Abs("saves/" + args.Alg + "/keysave_" + strconv.Itoa(index) + ".json")
 
 			data, err := json.Marshal(&save)
 			if err != nil {
 				ks.logger.Error(err)
 			}
 
-			saveFile, _ := filepath.Abs("saves/keysave_" + strconv.Itoa(index) + ".json")
 			if _, err = os.Stat(filepath.Dir(saveFile)); os.IsNotExist(err) {
 				_ = os.MkdirAll(filepath.Dir(saveFile), fs.ModePerm)
 			}
@@ -297,6 +297,28 @@ func (ks *KeygenService) keygen(args *pb.KeygenArgs) {
 				return
 			}
 			ks.logger.Info("key file saved")
+			return
+		case save := <-ks.edEndCh:
+			index, err := save.OriginalIndex()
+			if err != nil {
+				ks.logger.Error(err)
+			}
+			saveFile, _ := filepath.Abs("saves/" + args.Alg + "/keysave_" + strconv.Itoa(index) + ".json")
+
+			data, err := json.Marshal(&save)
+			if err != nil {
+				ks.logger.Error(err)
+			}
+
+			if _, err = os.Stat(filepath.Dir(saveFile)); os.IsNotExist(err) {
+				_ = os.MkdirAll(filepath.Dir(saveFile), fs.ModePerm)
+			}
+			if err = os.WriteFile(saveFile, data, 0600); err != nil {
+				ks.logger.Error(err)
+				return
+			}
+			ks.logger.Info("key file saved")
+			return
 		}
 	}
 }
@@ -304,10 +326,11 @@ func (ks *KeygenService) keygen(args *pb.KeygenArgs) {
 // reset clears the fields of the keygen service state that are involved in the keygen protocol execution.
 func (ks *KeygenService) reset() {
 	ks.localParty = nil
-	ks.localPartyCh = make(chan *keygen.LocalParty, 1)
+	ks.localPartyCh = make(chan tss.Party, 1)
 	ks.partyIdMap = make(map[peer.ID]*tss.PartyID)
 	ks.outCh = make(chan tss.Message, 1)
-	ks.endCh = make(chan keygen.LocalPartySaveData, 1)
+	ks.ecEndCh = make(chan eckg.LocalPartySaveData, 1)
+	ks.edEndCh = make(chan edkg.LocalPartySaveData, 1)
 	ks.errCh = make(chan *tss.Error, 1)
 }
 
