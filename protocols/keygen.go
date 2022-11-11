@@ -44,6 +44,7 @@ type KeygenService struct {
 	partyIdMap   map[peer.ID]*tss.PartyID
 	logger       *log.Logger
 	mu           *sync.Mutex
+	once         *sync.Once
 }
 
 // NewKeygenService constructs the initial state for the keygen service, sets the stream handlers for the protocols
@@ -63,6 +64,7 @@ func NewKeygenService(h host.Host) *KeygenService {
 		partyIdMap:   make(map[peer.ID]*tss.PartyID),
 		logger:       logger,
 		mu:           &sync.Mutex{},
+		once:         &sync.Once{},
 	}
 
 	h.SetStreamHandler(keygenStepDirectPId, ks.keygenStepHandlerDirect)
@@ -168,10 +170,11 @@ func (ks *KeygenService) keygenStepHandlerCommon(s network.Stream, broadcast boo
 	// constructed and set. since that function is running asynchronously, this function may be invoked by another peer
 	// opening a step stream, before the local party has had a chance to be initialized. the ks.localPartyCh is only
 	// used to block further execution until the local party has been initialized.
-	if ks.localParty == nil {
+	waitForLocalParty := func() {
 		ks.logger.Debug("waiting for local party to be initialized")
 		<-ks.localPartyCh
 	}
+	ks.once.Do(waitForLocalParty)
 
 	data, err := io.ReadAll(s)
 	if err != nil {
@@ -332,6 +335,8 @@ func (ks *KeygenService) reset() {
 	ks.ecEndCh = make(chan eckg.LocalPartySaveData, 1)
 	ks.edEndCh = make(chan edkg.LocalPartySaveData, 1)
 	ks.errCh = make(chan *tss.Error, 1)
+	ks.mu = &sync.Mutex{}
+	ks.once = &sync.Once{}
 }
 
 // stepKeygen creates the streams for the step sub-protocols. These essentially comprise the "messaging" component of
