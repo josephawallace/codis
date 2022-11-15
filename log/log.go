@@ -2,11 +2,9 @@ package log
 
 import (
 	"context"
-	"strconv"
+	"os"
 	"strings"
 	"time"
-
-	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/rs/zerolog"
 )
@@ -27,14 +25,14 @@ type Logger struct {
 func NewLogger() *Logger {
 	skipFrameCount := 2
 
-	logRotator := lumberjack.Logger{
-		Filename:   "./logs/log-" + strconv.Itoa(int(time.Now().Unix())) + ".log",
-		MaxBackups: 7,
-		MaxSize:    500,
-		MaxAge:     10,
-	}
+	//logRotator := lumberjack.Logger{
+	//	Filename:   "./logs/log-" + strconv.Itoa(int(time.Now().Unix())) + ".log",
+	//	MaxBackups: 7,
+	//	MaxSize:    500,
+	//	MaxAge:     10,
+	//}
 
-	logger := zerolog.New(&logRotator).
+	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}).
 		With().
 		Timestamp().
 		CallerWithSkipFrameCount(zerolog.CallerSkipFrameCount + skipFrameCount).
