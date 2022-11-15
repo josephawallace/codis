@@ -17,6 +17,7 @@ type (
 		ID         string
 		IP         string   `yaml:"ip"`
 		Port       string   `yaml:"port"`
+		Client     string   `yaml:"client,omitempty"`
 		Host       string   `yaml:"host,omitempty"`
 		Bootstraps []string `yaml:"bootstraps,omitempty"`
 		Network    Network  `yaml:"networks"`
@@ -36,6 +37,8 @@ var (
 		ID:         "",
 		IP:         "0.0.0.0",
 		Port:       "0",
+		Client:     "",
+		Host:       "",
 		Bootstraps: []string{},
 		Network:    DefaultNetwork,
 	}

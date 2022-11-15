@@ -124,7 +124,7 @@ func (ks *KeygenService) Keygen(ctx context.Context, args *pb.KeygenArgs, _ *pb.
 		}
 	}
 
-	// the initiating peer has no peer to call it's keygen handler, so it calls its own
+	// the initiating peer has no peer to call its keygen handler, so it calls its own
 	go ks.keygen(args) // TODO: take and fill the reply
 
 	return nil
@@ -197,6 +197,7 @@ func (ks *KeygenService) keygen(args *pb.KeygenArgs) {
 	defer ks.mu.Unlock()
 
 	ks.reset()
+
 	ks.logger.Info("keygen started!")
 	ks.logger.Info("count: %d, threshold: %d, alg: %s, party: %s", args.Count, args.Threshold, args.Alg, args.Party)
 

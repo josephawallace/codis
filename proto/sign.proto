@@ -4,10 +4,11 @@ package sign;
 option go_package = "/pb";
 
 message SignArgs {
-  uint32 count = 1;
-  uint32 threshold = 2;
+  int32 count = 1;
+  int32 threshold = 2;
   string alg = 3;
   repeated string party = 4;
+  string message = 5;
 }
 
 message SignReply {

@@ -114,30 +114,39 @@ func (p *Peer) AdvertiseConnect(ctx context.Context, rendezvous string) error {
 	return nil
 }
 
-func (p *Peer) StartRPCServer() error {
-	keygenService := protocols.NewKeygenService(p.Host)
+func (p *Peer) StartRPCServer(clientAddr string) error {
+	fromClientOnly := func(pid libpeer.ID, name string, method string) bool {
+		clientInfo, err := libpeer.AddrInfoFromString(clientAddr)
+		if err != nil {
+			p.logger.Error(err)
+			return false
+		}
+		return pid.String() == clientInfo.ID.String()
+	}
+	rpcHost := gorpc.NewServer(p.Host, "/codis/rpc", gorpc.WithAuthorizeFunc(fromClientOnly))
 
-	rpcHost := gorpc.NewServer(p.Host, "/codis/rpc")
+	keygenService := protocols.NewKeygenService(p.Host)
+	signService := protocols.NewSignService(p.Host)
 
 	if err := rpcHost.Register(keygenService); err != nil {
 		return err
 	}
 	p.logger.Debug("registered keygen service")
 
+	if err := rpcHost.Register(signService); err != nil {
+		return err
+	}
+	p.logger.Debug("registered sign service")
+
 	for {
 		time.Sleep(time.Second * 1)
 	}
 }
 
-func (p *Peer) StartRPCClient(ctx context.Context, host string) (*gorpc.Client, error) {
+func (p *Peer) StartRPCClient(ctx context.Context, hostAddr string) (*gorpc.Client, error) {
 	_ = protocols.NewKeygenService(p.Host)
 
-	hostAddr, err := multiaddr.NewMultiaddr(host)
-	if err != nil {
-		return nil, err
-	}
-
-	hostInfo, err := libpeer.AddrInfoFromP2pAddr(hostAddr)
+	hostInfo, err := libpeer.AddrInfoFromString(hostAddr)
 	if err != nil {
 		return nil, err
 	}

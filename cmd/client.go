@@ -33,41 +33,53 @@ convenient though, which is why we have this--to send test client commands from 
 
 			logger.Info("client is running! listening at %s", client.ListenAddrs())
 
-			hostAddr, err := multiaddr.NewMultiaddr(cfg.Peers[peerCfgId].Host)
-			if err != nil {
-				logger.Fatal(err)
-			}
-			hostInfo, err := peer.AddrInfoFromP2pAddr(hostAddr)
+			hostInfo, err := peer.AddrInfoFromString(cfg.Peers[peerCfgId].Host)
 			if err != nil {
 				logger.Fatal(err)
 			}
 
 			for {
-				var start string
+				start := ""
 				startPrompt := &survey.Input{Message: "Your Codis Client is live, press enter to see the menu..."}
 				if err := survey.AskOne(startPrompt, &start); err != nil {
 					logger.Fatal(err)
 				}
 
-				var action string
+				action := ""
 				actionPrompt := &survey.Select{Message: "Which action do you want to perform:", Options: []string{"sign", "keygen"}}
 				if err := survey.AskOne(actionPrompt, &action); err != nil {
 					logger.Fatal(err)
 				}
 
-				var partyPeerSelections []string
+				partyPeerSelections := make([]string, 0, len(client.Host.Peerstore().Peers()))
 				for _, p := range client.Host.Peerstore().Peers() {
 					if p.String() == hostInfo.ID.String() || p.String() == client.Host.ID().String() {
 						continue
 					}
+
+					for _, bootstrapAddrStr := range cfg.Peers[client.Host.ID().String()].Bootstraps {
+						bootstrapAddr, err := multiaddr.NewMultiaddr(bootstrapAddrStr)
+						if err != nil {
+							logger.Error(err)
+							continue
+						}
+						boostrapInfo, err := peer.AddrInfoFromP2pAddr(bootstrapAddr)
+						if err != nil {
+							logger.Error(err)
+							continue
+						}
+						if p.String() == boostrapInfo.ID.String() {
+
+						}
+					}
+
 					partyPeerSelections = append(partyPeerSelections, p.String())
 				}
 
-				switch action {
-				case "keygen":
+				if action == "keygen" {
 					answers := runKeygenPrompt(partyPeerSelections)
 
-					var alg string
+					alg := ""
 					if answers.Curve == "ed25519" {
 						alg = "eddsa"
 					} else {
@@ -92,13 +104,30 @@ convenient though, which is why we have this--to send test client commands from 
 
 					if err = rpcClient.Call(hostInfo.ID, "KeygenService", "Keygen", &protocolArgs, &protocolReply); err != nil {
 						logger.Error(err)
+					}
+				} else if action == "sign" {
+					answers := runSignPrompt(partyPeerSelections)
+
+					quorum := strings.Split(answers.Quorum, "/")
+					threshold, err := strconv.Atoi(quorum[0])
+					if err != nil {
+						logger.Error(err)
 						return
 					}
-					break
-				case "sign":
-					runSign()
-					break
-				default:
+					count, err := strconv.Atoi(quorum[1])
+					if err != nil {
+						logger.Error(err)
+						return
+					}
+
+					answers.Party = append(answers.Party, hostInfo.ID.String())
+					protocolArgs := pb.SignArgs{Alg: answers.Alg, Threshold: int32(threshold), Count: int32(count), Party: answers.Party}
+					protocolReply := pb.SignReply{}
+
+					if err = rpcClient.Call(hostInfo.ID, "SignService", "Sign", &protocolArgs, &protocolReply); err != nil {
+						logger.Error(err)
+					}
+				} else {
 					logger.Info("invalid action")
 				}
 			}
@@ -146,6 +175,47 @@ func runKeygenPrompt(peerStoreIds []string) keygenAnswers {
 	return answers
 }
 
-func runSign() {
-	logger.Info("Sign needs to be implemented.")
+type signAnswers struct {
+	Alg     string
+	Quorum  string
+	Party   []string
+	Message string
+}
+
+func runSignPrompt(peerStoreIds []string) signAnswers {
+	qs := []*survey.Question{
+		{
+			Name: "alg",
+			Prompt: &survey.Select{
+				Message: "Select the algorithm to use:",
+				Options: []string{"ecdsa", "eddsa"},
+			},
+		},
+		{
+			Name: "quorum",
+			Prompt: &survey.Input{
+				Message: "Specify the quorum that will be required to use the secret (threshold/count):",
+			},
+		},
+		{
+			Name: "party",
+			Prompt: &survey.MultiSelect{
+				Message: "Select the other participating clients (your host node is automatically included):",
+				Options: peerStoreIds,
+			},
+		},
+		{
+			Name: "message",
+			Prompt: &survey.Input{
+				Message: "Input the message to be signed (in hex):",
+			},
+		},
+	}
+
+	var answers signAnswers
+	if err := survey.Ask(qs, &answers); err != nil {
+		logger.Fatal(err)
+	}
+
+	return answers
 }

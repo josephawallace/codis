@@ -3,7 +3,6 @@ package cmd
 import (
 	"codis/p2p"
 	"context"
-
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +25,7 @@ func startPeerCmd() *cobra.Command {
 			}
 
 			go func() {
-				if err := peer.StartRPCServer(); err != nil {
+				if err := peer.StartRPCServer(cfg.Peers[peerCfgId].Client); err != nil {
 					logger.Error(err)
 				}
 			}()
