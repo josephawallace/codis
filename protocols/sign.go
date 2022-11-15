@@ -1,19 +1,14 @@
 package protocols
 
 import (
-	"bufio"
 	"codis/log"
 	"codis/proto/pb"
 	"codis/utils"
+
+	"bufio"
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/bnb-chain/tss-lib/common"
-	eckg "github.com/bnb-chain/tss-lib/ecdsa/keygen"
-	ecs "github.com/bnb-chain/tss-lib/ecdsa/signing"
-	edkg "github.com/bnb-chain/tss-lib/eddsa/keygen"
-	eds "github.com/bnb-chain/tss-lib/eddsa/signing"
-	"google.golang.org/protobuf/encoding/protojson"
 	"io"
 	"io/fs"
 	"math/big"
@@ -22,8 +17,14 @@ import (
 	"strconv"
 	"sync"
 
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bnb-chain/tss-lib/common"
+	eckg "github.com/bnb-chain/tss-lib/ecdsa/keygen"
+	ecs "github.com/bnb-chain/tss-lib/ecdsa/signing"
+	edkg "github.com/bnb-chain/tss-lib/eddsa/keygen"
+	eds "github.com/bnb-chain/tss-lib/eddsa/signing"
 	"github.com/bnb-chain/tss-lib/tss"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"

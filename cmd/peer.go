@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"codis/p2p"
+
 	"context"
+
 	"github.com/spf13/cobra"
 )
 
@@ -15,9 +17,10 @@ func startPeerCmd() *cobra.Command {
 		Long:  `Creates a new peer that connects to bootstrap nodes.`,
 		Run: func(c *cobra.Command, args []string) {
 			ctx := context.Background()
-			peer := p2p.NewPeer(ctx, cfg.Peers[peerCfgId])
-			rendezvous := "1ae697d4da3b45469e81ef80dba7ad40"
 
+			peer := p2p.NewPeer(ctx, cfg.Peers[peerCfgId])
+
+			rendezvous := "1ae697d4da3b45469e81ef80dba7ad40"
 			if err := peer.AdvertiseConnect(ctx, rendezvous); err != nil {
 				logger.Error(err)
 			} else {

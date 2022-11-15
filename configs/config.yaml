@@ -21,7 +21,6 @@ peers:
     port: '50003'
     client: '/ip4/127.0.0.1/tcp/8481/p2p/QmdJqy7uvAGDqJxtR7ZVFBXZ4RXdDhaboDsSyc1r9pGFVy'
     bootstraps:
-      - '/ip4/10.5.0.2/tcp/50001/p2p/QmRVHjAThKg8YZ4JA28WSRRMCmGdamr7d8JryPnrUW7uEv'
       - '/ip4/127.0.0.1/tcp/50001/p2p/QmRVHjAThKg8YZ4JA28WSRRMCmGdamr7d8JryPnrUW7uEv'
     network:
       psk: '3da593207bda8e8b2fc3e9e344c3bbb0086ab24997d8b05763862f5c537fcb69'
@@ -38,7 +37,6 @@ peers:
     port: '50005'
     client: ''
     bootstraps:
-      - '/ip4/10.5.0.2/tcp/50001/p2p/QmRVHjAThKg8YZ4JA28WSRRMCmGdamr7d8JryPnrUW7uEv'
       - '/ip4/127.0.0.1/tcp/50001/p2p/QmRVHjAThKg8YZ4JA28WSRRMCmGdamr7d8JryPnrUW7uEv'
     network:
       psk: '3da593207bda8e8b2fc3e9e344c3bbb0086ab24997d8b05763862f5c537fcb69'

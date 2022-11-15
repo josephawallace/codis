@@ -1,10 +1,11 @@
 package protocols
 
 import (
-	"bufio"
 	"codis/log"
 	"codis/proto/pb"
 	"codis/utils"
+
+	"bufio"
 	"context"
 	"encoding/json"
 	"io"

@@ -5,6 +5,7 @@ import (
 	"codis/log"
 	"codis/protocols"
 	"codis/utils"
+
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -28,6 +29,7 @@ import (
 	"github.com/multiformats/go-multiaddr"
 )
 
+// Peer represents a Codis node
 type Peer struct {
 	Host libhost.Host
 
@@ -36,6 +38,7 @@ type Peer struct {
 	logger    *log.Logger
 }
 
+// NewPeer creates a node based on the config passed in
 func NewPeer(ctx context.Context, peerCfg configs.Peer) *Peer {
 	logger := log.NewLogger()
 
@@ -82,6 +85,7 @@ func NewPeer(ctx context.Context, peerCfg configs.Peer) *Peer {
 	}
 }
 
+// ListenAddrs returns the multiaddrs that the node can be dialed at
 func (p *Peer) ListenAddrs() string {
 	info := libhost.InfoFromHost(p.Host)
 	addrs, err := libpeer.AddrInfoToP2pAddrs(info)
@@ -97,6 +101,8 @@ func (p *Peer) ListenAddrs() string {
 	return strings.Join(addrStrs, ",")
 }
 
+// AdvertiseConnect first advertises that the node is at the rendezvous, then finds all other nodes that have announced
+// themselves previously at the same rendezvous
 func (p *Peer) AdvertiseConnect(ctx context.Context, rendezvous string) error {
 	_, err := p.discovery.Advertise(ctx, rendezvous)
 	if err != nil {
@@ -114,6 +120,7 @@ func (p *Peer) AdvertiseConnect(ctx context.Context, rendezvous string) error {
 	return nil
 }
 
+// StartRPCServer allows the node to accept RPC calls from a single specified client
 func (p *Peer) StartRPCServer(clientAddr string) error {
 	fromClientOnly := func(pid libpeer.ID, name string, method string) bool {
 		clientInfo, err := libpeer.AddrInfoFromString(clientAddr)
@@ -143,6 +150,7 @@ func (p *Peer) StartRPCServer(clientAddr string) error {
 	}
 }
 
+// StartRPCClient connects to a host and enables this node to send RPC calls to it
 func (p *Peer) StartRPCClient(ctx context.Context, hostAddr string) (*gorpc.Client, error) {
 	_ = protocols.NewKeygenService(p.Host)
 
@@ -159,6 +167,7 @@ func (p *Peer) StartRPCClient(ctx context.Context, hostAddr string) (*gorpc.Clie
 	return rpcClient, nil
 }
 
+// RunUntilCancel waits on a ^C input, on which it closes the node and terminates the program
 func (p *Peer) RunUntilCancel() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
