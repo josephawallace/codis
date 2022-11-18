@@ -9,9 +9,51 @@ services:
         source: .
         target: *working_dir
       - type: volume
-        source: key_volume
-        target: &key_volume_dir /root/keys/
-    command: go run codis start bootstrap -i bootstrap
+        target: &env_volume_dir /root/env/
+    command: go run codis start bootstrap
+    environment:
+      - CODIS_IP=0.0.0.0
+      - CODIS_PORT=50001
+      - CODIS_PSK=${CODIS_PSK}
 
-volumes:
-  key_volume:
+  peer:
+    image: golang:1.19-bullseye
+    depends_on:
+      - bootstrap
+    working_dir: &working_dir /root
+    volumes:
+      - type: bind
+        source: .
+        target: *working_dir
+      - type: volume
+        target: *env_volume_dir
+    command: go run codis start peer
+    deploy:
+      mode: replicated
+      replicas: 5
+    environment:
+      - CODIS_IP=0.0.0.0
+      - CODIS_PORT=0
+      - CODIS_PSK=${CODIS_PSK}
+      - CODIS_RENDEZVOUS=${CODIS_RENDEZVOUS}
+      - CODIS_BOOTSTRAPS=${CODIS_BOOTSTRAPS}
+
+  client:
+    image: golang:1.19-bullseye
+    depends_on:
+      - peer
+    working_dir: *working_dir
+    volumes:
+      - type: bind
+        source: .
+        target: *working_dir
+      - type: volume
+        target: *env_volume_dir
+    command: go run codis start client
+    environment:
+      - CODIS_IP=0.0.0.0
+      - CODIS_PORT=0
+      - CODIS_PSK=${CODIS_PSK}
+      - CODIS_RENDEZVOUS=${CODIS_RENDEZVOUS}
+      - CODIS_BOOTSTRAPS=${CODIS_BOOTSTRAPS}
+      - CODIS_HOST=${CODIS_HOST}

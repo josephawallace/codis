@@ -39,20 +39,20 @@ type Peer struct {
 }
 
 // NewPeer creates a node based on the config passed in
-func NewPeer(ctx context.Context, peerCfg configs.Peer) *Peer {
+func NewPeer(ctx context.Context, cfg *configs.Config) *Peer {
 	logger := log.NewLogger()
 
-	bootstrapAddrs, err := utils.AddrStringsToAddrs(peerCfg.Bootstraps)
+	bootstrapAddrs, err := utils.AddrStringsToAddrs(cfg.Bootstraps)
 	if err != nil {
 		logger.Fatal(err)
 	}
 
-	pskBytes, err := hex.DecodeString(peerCfg.Network.PSK)
+	pskBytes, err := hex.DecodeString(cfg.PSK)
 	if err != nil {
 		logger.Fatal(err)
 	}
 
-	host, kdht, err := setupHostAndDHT(ctx, bootstrapAddrs, pskBytes, peerCfg)
+	host, kdht, err := setupHostAndDHT(ctx, bootstrapAddrs, pskBytes, cfg)
 	if err != nil {
 		logger.Fatal(err)
 	} else {
@@ -121,16 +121,8 @@ func (p *Peer) AdvertiseConnect(ctx context.Context, rendezvous string) error {
 }
 
 // StartRPCServer allows the node to accept RPC calls from a single specified client
-func (p *Peer) StartRPCServer(clientAddr string) error {
-	fromClientOnly := func(pid libpeer.ID, name string, method string) bool {
-		clientInfo, err := libpeer.AddrInfoFromString(clientAddr)
-		if err != nil {
-			p.logger.Error(err)
-			return false
-		}
-		return pid.String() == clientInfo.ID.String()
-	}
-	rpcHost := gorpc.NewServer(p.Host, "/codis/rpc", gorpc.WithAuthorizeFunc(fromClientOnly))
+func (p *Peer) StartRPCServer() error {
+	rpcHost := gorpc.NewServer(p.Host, "/codis/rpc")
 
 	keygenService := protocols.NewKeygenService(p.Host)
 	signService := protocols.NewSignService(p.Host)
@@ -178,13 +170,13 @@ func (p *Peer) RunUntilCancel() {
 	}
 }
 
-func setupHostAndDHT(ctx context.Context, bootstrapAddrs []multiaddr.Multiaddr, psk pnet.PSK, peerCfg configs.Peer) (libhost.Host, *dht.IpfsDHT, error) {
+func setupHostAndDHT(ctx context.Context, bootstrapAddrs []multiaddr.Multiaddr, psk pnet.PSK, cfg *configs.Config) (libhost.Host, *dht.IpfsDHT, error) {
 	privKey, err := utils.GetOrCreatePrivKey()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	listenAddr, err := multiaddr.NewMultiaddr("/ip4/" + peerCfg.IP + "/tcp/" + peerCfg.Port)
+	listenAddr, err := multiaddr.NewMultiaddr("/ip4/" + cfg.IP + "/tcp/" + cfg.Port)
 	if err != nil {
 		return nil, nil, err
 	}

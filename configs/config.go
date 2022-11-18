@@ -2,81 +2,63 @@ package configs
 
 import (
 	"codis/log"
-
-	"os"
+	"github.com/spf13/viper"
 	"path/filepath"
-
-	"gopkg.in/yaml.v2"
 )
 
 type (
 	Config struct {
-		Peers map[string]Peer `yaml:"peers"`
-	}
-
-	Peer struct {
-		ID         string
-		IP         string   `yaml:"ip"`
-		Port       string   `yaml:"port"`
-		Client     string   `yaml:"client,omitempty"`
-		Host       string   `yaml:"host,omitempty"`
-		Bootstraps []string `yaml:"bootstraps,omitempty"`
-		Network    Network  `yaml:"networks"`
-	}
-
-	Network struct {
-		PSK string `yaml:"psk"`
-	}
-)
-
-var (
-	DefaultNetwork = Network{
-		PSK: "",
-	}
-
-	DefaultPeer = Peer{
-		ID:         "",
-		IP:         "0.0.0.0",
-		Port:       "0",
-		Client:     "",
-		Host:       "",
-		Bootstraps: []string{},
-		Network:    DefaultNetwork,
+		IP         string   `mapstructure:"ip"`
+		Port       string   `mapstructure:"port"`
+		PSK        string   `mapstructure:"psk"`
+		Rendezvous string   `mapstructure:"rendezvous"`
+		Client     string   `mapstructure:"client"`
+		Host       string   `mapstructure:"host"`
+		Bootstraps []string `mapstructure:"bootstraps"`
 	}
 )
 
 func NewConfig() *Config {
 	logger := log.NewLogger()
 
-	configFile, _ := filepath.Abs("configs/config.yaml")
-	data, err := os.ReadFile(configFile)
-	if err != nil {
-		logger.Fatal(err)
-	}
+	viper.SetConfigName("app")
+	viper.SetConfigType("env")
 
-	cfg := &Config{}
-	err = yaml.Unmarshal(data, cfg)
-	if err != nil {
-		logger.Fatal(err)
-	}
+	envPrefix := "codis"
+	viper.SetEnvPrefix(envPrefix)
+	viper.AutomaticEnv() // get CODIS_ENV vars like viper.Get("env")
 
-	cfg.Peers[DefaultPeer.ID] = DefaultPeer
+	configDirPath, _ := filepath.Abs("env/")
+	viper.AddConfigPath(configDirPath)
 
-	for key, _ := range cfg.Peers {
-		if peerCfg, ok := cfg.Peers[key]; ok {
-			peerCfg.ID = key
-			cfg.Peers[key] = peerCfg
+	for _, key := range []string{
+		"ip",
+		"port",
+		"psk",
+		"rendezvous",
+		"client",
+		"host",
+		"bootstraps",
+	} {
+		if err := viper.BindEnv(key); err != nil {
+			logger.Error(err)
 		}
 	}
 
-	return cfg
-}
-
-func (c *Config) CheckPeerCfgExists(id string) bool {
-	for _, peerCfg := range c.Peers {
-		if id == peerCfg.ID {
-			return true
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			logger.Debug("config file not found, using defaults and environment variables")
+		} else {
+			logger.Error(err)
 		}
 	}
-	return false
+
+	var cfg Config
+	if err := viper.Unmarshal(&cfg); err != nil {
+		logger.Error(err)
+	}
+
+	// HOTFIX: unmarshalling "[]" from .env gives an array of length one with ""
+
+	return &cfg
 }

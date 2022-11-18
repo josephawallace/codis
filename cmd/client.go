@@ -3,6 +3,7 @@ package cmd
 import (
 	"codis/p2p"
 	"codis/proto/pb"
+	"github.com/spf13/viper"
 
 	"context"
 	"os"
@@ -26,9 +27,9 @@ convenient though, which is why we have this--to send test client commands from 
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx := context.Background()
 
-			client := p2p.NewPeer(ctx, cfg.Peers[peerCfgId])
+			client := p2p.NewPeer(ctx, cfg)
 
-			rpcClient, err := client.StartRPCClient(ctx, cfg.Peers[peerCfgId].Host)
+			rpcClient, err := client.StartRPCClient(ctx, cfg.Host)
 			if err != nil {
 				logger.Fatal(err)
 			} else {
@@ -37,7 +38,7 @@ convenient though, which is why we have this--to send test client commands from 
 
 			logger.Info("client is running! listening at %s", client.ListenAddrs())
 
-			hostInfo, err := peer.AddrInfoFromString(cfg.Peers[peerCfgId].Host)
+			hostInfo, err := peer.AddrInfoFromString(cfg.Host)
 			if err != nil {
 				logger.Fatal(err)
 			}
@@ -45,6 +46,11 @@ convenient though, which is why we have this--to send test client commands from 
 			go clientLoop(client, rpcClient, hostInfo.ID)
 			client.RunUntilCancel()
 		},
+	}
+
+	cmd.Flags().String("host", "", "multiaddress of host to send RPC calls to")
+	if err := viper.BindPFlags(cmd.Flags()); err != nil {
+		logger.Fatal(err)
 	}
 
 	return cmd
