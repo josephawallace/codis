@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  bootstrap:
+    image: golang:1.19-bullseye
+    working_dir: &working_dir /root
+    volumes:
+      - type: bind
+        source: .
+        target: *working_dir
+      - type: volume
+        source: key_volume
+        target: &key_volume_dir /root/keys/
+    command: go run codis start bootstrap -i bootstrap
+
+volumes:
+  key_volume:

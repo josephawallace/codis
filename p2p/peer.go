@@ -179,7 +179,7 @@ func (p *Peer) RunUntilCancel() {
 }
 
 func setupHostAndDHT(ctx context.Context, bootstrapAddrs []multiaddr.Multiaddr, psk pnet.PSK, peerCfg configs.Peer) (libhost.Host, *dht.IpfsDHT, error) {
-	privKey, err := utils.GetOrCreatePrivKey(peerCfg.ID)
+	privKey, err := utils.GetOrCreatePrivKey()
 	if err != nil {
 		return nil, nil, err
 	}

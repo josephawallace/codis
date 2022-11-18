@@ -1,3 +1,6 @@
+# Docker cache
+.cache/
+
 # Logs
 logs/
 
