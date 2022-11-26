@@ -2,6 +2,8 @@ package configs
 
 import (
 	"codis/log"
+	"fmt"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"path/filepath"
 )
@@ -18,47 +20,54 @@ type (
 	}
 )
 
-func NewConfig() *Config {
+func NewConfig(cmd *cobra.Command) *Config {
 	logger := log.NewLogger()
 
-	viper.SetConfigName("app")
-	viper.SetConfigType("env")
+	configPath, _ := filepath.Abs("configs")
+	viper.AddConfigPath(configPath)
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
 
 	envPrefix := "codis"
 	viper.SetEnvPrefix(envPrefix)
-	viper.AutomaticEnv() // get CODIS_ENV vars like viper.Get("env")
+	viper.AutomaticEnv()
 
-	configDirPath, _ := filepath.Abs("env/")
-	viper.AddConfigPath(configDirPath)
+	viper.SetDefault("ip", "0.0.0.0")
+	viper.SetDefault("port", "0")
+	viper.SetDefault("psk", "")
+	viper.SetDefault("rendezvous", "")
+	viper.SetDefault("client", "")
+	viper.SetDefault("host", "")
+	viper.SetDefault("bootstraps", "")
 
-	for _, key := range []string{
-		"ip",
-		"port",
-		"psk",
-		"rendezvous",
-		"client",
-		"host",
-		"bootstraps",
-	} {
-		if err := viper.BindEnv(key); err != nil {
-			logger.Error(err)
-		}
+	if err := viper.BindPFlags(cmd.Flags()); err != nil {
+		logger.Error(err)
+	}
+	if err := viper.BindPFlags(cmd.PersistentFlags()); err != nil {
+		logger.Error(err)
 	}
 
+	// reads in any values from config file
 	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			logger.Debug("config file not found, using defaults and environment variables")
-		} else {
-			logger.Error(err)
-		}
+		logger.Error(err)
 	}
 
+	// override defaults that cannot be empty
+	//if ip := viper.Get("ip"); ip == "" {
+	//	viper.Set("ip", "0.0.0.0")
+	//}
+	//if port := viper.Get("port"); port == "" {
+	//	viper.Set("port", "0")
+	//}
+
+	// finally create object that with all config details, sourced from multiple places, that can be easily passed
+	// around and referenced.
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		logger.Error(err)
 	}
 
-	// HOTFIX: unmarshalling "[]" from .env gives an array of length one with ""
+	fmt.Print(cfg)
 
 	return &cfg
 }

@@ -14,7 +14,6 @@ services:
     environment:
       - CODIS_IP=0.0.0.0
       - CODIS_PORT=50001
-      - CODIS_PSK=${CODIS_PSK}
 
   peer:
     image: golang:1.19-bullseye
@@ -31,12 +30,11 @@ services:
     deploy:
       mode: replicated
       replicas: 5
+    env_file:
+      - configs/app.env
     environment:
       - CODIS_IP=0.0.0.0
       - CODIS_PORT=0
-      - CODIS_PSK=${CODIS_PSK}
-      - CODIS_RENDEZVOUS=${CODIS_RENDEZVOUS}
-      - CODIS_BOOTSTRAPS=${CODIS_BOOTSTRAPS}
 
   client:
     image: golang:1.19-bullseye
@@ -53,7 +51,3 @@ services:
     environment:
       - CODIS_IP=0.0.0.0
       - CODIS_PORT=0
-      - CODIS_PSK=${CODIS_PSK}
-      - CODIS_RENDEZVOUS=${CODIS_RENDEZVOUS}
-      - CODIS_BOOTSTRAPS=${CODIS_BOOTSTRAPS}
-      - CODIS_HOST=${CODIS_HOST}

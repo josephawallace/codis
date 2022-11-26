@@ -20,9 +20,11 @@ func NewRootCommand() *cobra.Command {
 		Long: `Codis is the cryptographic component of our cryptocurrency custody stack. Codis can distributively generate 
 keys, and subsequently, sign transactions with those keys--also in a distributed manner. This ensures that the private 
 key data never exists in it's entirety, and as such, is more resilient against attacks!`,
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			cfg = configs.NewConfig(cmd)
+		},
 	}
 
-	cfg = configs.NewConfig()
 	logger = log.NewLogger()
 
 	cmd.AddCommand(startCmd())

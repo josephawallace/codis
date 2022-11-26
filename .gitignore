@@ -1,14 +1,11 @@
+# Environmnet specific data (saved to volume)
+env/
+
 # Docker cache
 .cache/
 
 # Logs
 logs/
-
-# Peer keys
-keys/
-
-# Save data
-saves/
 
 # JetBrains
 .idea/

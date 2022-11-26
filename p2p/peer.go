@@ -209,6 +209,9 @@ func bootstrapDHT(ctx context.Context, host libhost.Host, bootstrapInfos []libpe
 	peersConnected := 0
 	var wg sync.WaitGroup
 	for _, info := range bootstrapInfos {
+		if host.ID() == info.ID {
+			continue // don't self dial
+		}
 		wg.Add(1)
 		p := info
 		go func() {

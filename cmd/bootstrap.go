@@ -26,5 +26,7 @@ func startBootstrapCmd() *cobra.Command {
 		},
 	}
 
+	cmd.PersistentFlags().StringP("port", "p", "", "port for peer to listen on")
+
 	return cmd
 }

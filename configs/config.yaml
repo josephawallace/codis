@@ -1,0 +1,7 @@
+ip: "4.0.0.0"
+port: "0"
+psk: ""
+rendezvous: ""
+client: ""
+host: ""
+bootstraps:
