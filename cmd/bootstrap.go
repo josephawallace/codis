@@ -21,12 +21,10 @@ func startBootstrapCmd() *cobra.Command {
 
 			bootstrap := p2p.NewPeer(ctx, cfg)
 
-			logger.Info("listening at %s", bootstrap.ListenAddrs())
+			logger.Info("bootstrap is running! listening at %s", bootstrap.ListenAddrs())
 			bootstrap.RunUntilCancel()
 		},
 	}
-
-	cmd.PersistentFlags().StringP("port", "p", "", "port for peer to listen on")
 
 	return cmd
 }

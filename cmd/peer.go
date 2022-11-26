@@ -33,7 +33,7 @@ func startPeerCmd() *cobra.Command {
 				}
 			}()
 
-			logger.Info("host is running! Listening at %s", peer.ListenAddrs())
+			logger.Info("host is running! listening at %s", peer.ListenAddrs())
 			peer.RunUntilCancel()
 		},
 	}
