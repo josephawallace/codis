@@ -53,4 +53,6 @@ services:
       - CODIS_BOOTSTRAPS=${CODIS_BOOTSTRAPS}
     depends_on:
       - peer
+    stdin_open: true
+    tty: true
     command: go run codis start client

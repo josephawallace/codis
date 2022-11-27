@@ -1,3 +1,6 @@
+# Env file that is used to send env var values to containers
+.env
+
 # Environmnet specific data (saved to volume)
 env/
 
