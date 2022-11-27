@@ -21,7 +21,7 @@ You should see that the client has connected to the host and a terminal prompt s
 
 🚨 *The client terminal interface is currently not working through Docker. You can still send requests to the network by
 setting the necessary environment variables on the local machine and running the client outside of Docker (refer to 
-[CODIS-T-23]()).* 🚨
+[CODIS-T-23](https://milque.jetbrains.space/p/codis/issues/23)).* 🚨
 
 ### Node Roles
 
