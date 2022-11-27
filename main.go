@@ -1,6 +1,6 @@
 package main
 
-import "codis/cmd"
+import "github.com/milquellc/codis/cmd"
 
 func main() {
 	cmd.Execute()

@@ -1,10 +1,10 @@
 package p2p
 
 import (
-	"codis/configs"
-	"codis/log"
-	"codis/protocols"
-	"codis/utils"
+	"github.com/milquellc/codis/configs"
+	"github.com/milquellc/codis/log"
+	"github.com/milquellc/codis/protocols"
+	"github.com/milquellc/codis/utils"
 
 	"context"
 	"encoding/hex"

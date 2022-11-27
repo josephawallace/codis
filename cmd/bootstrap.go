@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"codis/p2p"
+	"github.com/milquellc/codis/p2p"
 
 	"context"
 

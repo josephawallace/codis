@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"codis/p2p"
-	"codis/proto/pb"
+	"github.com/milquellc/codis/p2p"
+	"github.com/milquellc/codis/proto/pb"
 	"github.com/spf13/viper"
 
 	"context"

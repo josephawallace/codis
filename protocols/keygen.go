@@ -1,9 +1,9 @@
 package protocols
 
 import (
-	"codis/log"
-	"codis/proto/pb"
-	"codis/utils"
+	"github.com/milquellc/codis/log"
+	"github.com/milquellc/codis/proto/pb"
+	"github.com/milquellc/codis/utils"
 
 	"bufio"
 	"context"

@@ -1,4 +1,4 @@
-module codis
+module github.com/milquellc/codis
 
 go 1.18
 

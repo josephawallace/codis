@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"codis/configs"
-	"codis/log"
+	"github.com/milquellc/codis/configs"
+	"github.com/milquellc/codis/log"
 
 	"github.com/spf13/cobra"
 )

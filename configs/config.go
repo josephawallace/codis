@@ -1,7 +1,7 @@
 package configs
 
 import (
-	"codis/log"
+	"github.com/milquellc/codis/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"path/filepath"
