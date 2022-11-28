@@ -100,9 +100,7 @@ func AddrStringsToInfos(addrs []string) ([]peer.AddrInfo, error) {
 func GetOrCreatePrivKey() (crypto.PrivKey, error) {
 	var privKey crypto.PrivKey
 
-	keyDir, _ := filepath.Abs("env/")
-	keyFile, _ := filepath.Abs(keyDir + "/privkey.dat")
-
+	keyFile, _ := filepath.Abs("node_privkey.dat")
 	if data, err := os.ReadFile(keyFile); err == nil { // key specified and data already exists
 		privKey, err = crypto.UnmarshalPrivateKey(data)
 		if err != nil {
@@ -110,9 +108,6 @@ func GetOrCreatePrivKey() (crypto.PrivKey, error) {
 		}
 	} else { // no key data found
 		if privKey, _, err = crypto.GenerateKeyPair(crypto.RSA, 2048); err != nil {
-			return nil, err
-		}
-		if err = os.MkdirAll(keyDir, fs.ModePerm); err != nil {
 			return nil, err
 		}
 		if data, err = crypto.MarshalPrivateKey(privKey); err != nil {

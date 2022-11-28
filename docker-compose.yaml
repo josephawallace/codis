@@ -1,27 +1,24 @@
 version: "3.8"
 services:
+
   bootstrap:
-    image: golang:1.19-bullseye
-    working_dir: &working_dir /root
-    volumes:
-      - type: bind
-        source: .
-        target: *working_dir
-      - type: volume
-        target: &env_volume_dir /root/env/
+    image: codis/bootstrap
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        node_role: bootstrap
     environment:
       - CODIS_IP=0.0.0.0
       - CODIS_PORT=50043
-    command: go run codis start bootstrap
+
   peer:
-    image: golang:1.19-bullseye
-    working_dir: &working_dir /root
-    volumes:
-      - type: bind
-        source: .
-        target: *working_dir
-      - type: volume
-        target: *env_volume_dir
+    image: codis/peer
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        node_role: bootstrap
     environment:
       - CODIS_IP=0.0.0.0
       - CODIS_PORT=0
@@ -34,25 +31,3 @@ services:
     deploy:
       mode: replicated
       replicas: 5
-    command: go run codis start peer
-  client:
-    image: golang:1.19-bullseye
-    working_dir: *working_dir
-    volumes:
-      - type: bind
-        source: .
-        target: *working_dir
-      - type: volume
-        target: *env_volume_dir
-    environment:
-      - CODIS_IP=0.0.0.0
-      - CODIS_PORT=0
-      - CODIS_PSK=${CODIS_PSK}
-      - CODIS_RENDEZVOUS=${CODIS_RENDEZVOUS}
-      - CODIS_HOST=${CODIS_HOST}
-      - CODIS_BOOTSTRAPS=${CODIS_BOOTSTRAPS}
-    depends_on:
-      - peer
-    stdin_open: true
-    tty: true
-    command: go run codis start client

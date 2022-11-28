@@ -1,7 +1,12 @@
 FROM golang:1.19-bullseye
 
+ARG node_role
+ENV node_role=${node_role}
+
 WORKDIR /root
 
-RUN git config --global url."git@github.com".insteadOf "https://github.com"
+COPY . .
 
-RUN go env -w GOPRIVATE=github.com/milquellc/codis
+RUN ["go", "install", "github.com/milquellc/codis"]
+
+CMD ["sh", "-c", "codis start ${node_role}"]

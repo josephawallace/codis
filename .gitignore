@@ -1,8 +1,11 @@
 # Env file that is used to send env var values to containers
 .env
 
-# Environmnet specific data (saved to volume)
-env/
+# Protocol result saves
+saves/
+
+# Libp2p node private key
+node_privkey.dat
 
 # Docker cache
 .cache/
