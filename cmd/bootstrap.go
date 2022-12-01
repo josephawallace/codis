@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/milquellc/codis/p2p"
+	"github.com/milquellc/codis/network"
 
 	"context"
 
@@ -19,7 +19,7 @@ func startBootstrapCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx := context.Background()
 
-			bootstrap := p2p.NewPeer(ctx, cfg)
+			bootstrap := network.NewPeer(ctx, cfg)
 
 			logger.Info("bootstrap is running! listening at %s", bootstrap.ListenAddrs())
 			bootstrap.RunUntilCancel()

@@ -1,11 +1,10 @@
 package cmd
 
 import (
-	"github.com/milquellc/codis/p2p"
-	"github.com/milquellc/codis/proto/pb"
-	"github.com/spf13/viper"
-
 	"context"
+	"errors"
+	"github.com/milquellc/codis/network"
+	"github.com/milquellc/codis/proto/pb"
 	"os"
 
 	"github.com/AlecAivazis/survey/v2"
@@ -15,7 +14,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// startClientCmd starts a client node. This node reaches out to its configured "host" via RPC call to initiate a p2p
+// startClientCmd starts a client node. This node reaches out to its configured "host" via RPC call to initiate a network
 // protocol.
 func startClientCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -27,7 +26,7 @@ convenient though, which is why we have this--to send test client commands from 
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx := context.Background()
 
-			client := p2p.NewPeer(ctx, cfg)
+			client := network.NewPeer(ctx, cfg)
 
 			rpcClient, err := client.StartRPCClient(ctx, cfg.Host)
 			if err != nil {
@@ -48,11 +47,6 @@ convenient though, which is why we have this--to send test client commands from 
 		},
 	}
 
-	cmd.Flags().String("host", "", "multiaddress of host to send RPC calls to")
-	if err := viper.BindPFlags(cmd.Flags()); err != nil {
-		logger.Fatal(err)
-	}
-
 	return cmd
 }
 
@@ -63,14 +57,15 @@ const (
 
 // clientLoop defines the interface for the Codis client. The loop waits for input on all the args needed to run the
 // different protocols.
-func clientLoop(client *p2p.Peer, rpcClient *rpc.Client, hostId peer.ID) {
+func clientLoop(client *network.Peer, rpcClient *rpc.Client, hostId peer.ID) {
 	for {
 		// the start prompt is used so that we have a clean idle state, we can read the current peer list at the moment
 		// we are ready, and so that the logs for different requests have a point of separation.
 		var start string
 		startPrompt := &survey.Input{Message: "Your Codis Client is live, press enter to see the menu..."}
 		if err := survey.AskOne(startPrompt, &start); err != nil {
-			logger.Fatal(err)
+			logger.Error(err)
+			continue
 		}
 
 		// ideally, this list would only consist of service peers on the network so that a user can't start a stream
@@ -116,7 +111,7 @@ func clientLoop(client *p2p.Peer, rpcClient *rpc.Client, hostId peer.ID) {
 				logger.Error(err)
 			}
 		default:
-			logger.Debug("invalid action")
+			logger.Error(errors.New("invalid action"))
 		}
 	}
 }
@@ -165,7 +160,7 @@ func menuPrompt(clientHost peer.ID, servicePeerList []string) startAnswers {
 		if err == terminal.InterruptErr {
 			os.Exit(0)
 		}
-		logger.Fatal(err)
+		logger.Error(err)
 	}
 
 	return answers
@@ -192,7 +187,7 @@ func signPrompt() signAnswers {
 		if err == terminal.InterruptErr {
 			os.Exit(0)
 		}
-		logger.Fatal(err)
+		logger.Error(err)
 	}
 
 	return answers

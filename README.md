@@ -39,11 +39,6 @@ In this way, joining peers can quickly learn about the network if they connect t
 The peer service starts a set of peers that can execute the Codis protocols. These peers communicate with each other to
 generate the keys or signatures that are requested.
 
-#### Client Service
-
-The client service starts a client node that can send RPC calls to its specified host peer. The client node will form and
-send a request for generating keys or signatures.
-
 ### Configuration
 
 Codis uses [Viper]() to source configurations from flags, files, and environment variables. Because of this, it can 

@@ -1,30 +1,33 @@
 package configs
 
 import (
+	"path/filepath"
+
 	"github.com/milquellc/codis/log"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"path/filepath"
 )
 
-type (
-	Config struct {
-		IP         string   `mapstructure:"ip"`
-		Port       string   `mapstructure:"port"`
-		PSK        string   `mapstructure:"psk"`
-		Rendezvous string   `mapstructure:"rendezvous"`
-		Client     string   `mapstructure:"client"`
-		Host       string   `mapstructure:"host"`
-		Bootstraps []string `mapstructure:"bootstraps"`
-	}
-)
+// Config defines everything we need to know to run a node
+type Config struct {
+	IP         string   `mapstructure:"ip"`
+	Port       string   `mapstructure:"port"`
+	PSK        string   `mapstructure:"psk"`
+	Rendezvous string   `mapstructure:"rendezvous"`
+	Client     string   `mapstructure:"client"`
+	Host       string   `mapstructure:"host"`
+	Bootstraps []string `mapstructure:"bootstraps"`
+}
 
+// NewConfig uses Viper to look through flags, environment variables, and config files to construct a config object that
+// can be passed around when appropriate.
 func NewConfig(cmd *cobra.Command) *Config {
 	logger := log.NewLogger()
 
-	configPath, _ := filepath.Abs("configs")
+	configPath, _ := filepath.Abs(".")
 	viper.AddConfigPath(configPath)
-	viper.SetConfigName("config")
+	viper.SetConfigName("codis-config")
 	viper.SetConfigType("yaml")
 
 	envPrefix := "codis"

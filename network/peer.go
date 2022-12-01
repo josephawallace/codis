@@ -1,4 +1,4 @@
-package p2p
+package network
 
 import (
 	"github.com/milquellc/codis/configs"
@@ -44,12 +44,12 @@ func NewPeer(ctx context.Context, cfg *configs.Config) *Peer {
 
 	bootstrapAddrs, err := utils.AddrStringsToAddrs(cfg.Bootstraps)
 	if err != nil {
-		logger.Fatal(err)
+		logger.Error(err)
 	}
 
 	pskBytes, err := hex.DecodeString(cfg.PSK)
 	if err != nil {
-		logger.Fatal(err)
+		logger.Error(err)
 	}
 
 	host, kdht, err := setupHostAndDHT(ctx, bootstrapAddrs, pskBytes, cfg)
@@ -60,14 +60,14 @@ func NewPeer(ctx context.Context, cfg *configs.Config) *Peer {
 	}
 
 	if err = kdht.Bootstrap(ctx); err != nil {
-		logger.Fatal(err)
+		logger.Error(err)
 	} else {
 		logger.Debug("successfully put kdht in a bootstrapping state")
 	}
 
 	bootstrapInfos, err := utils.AddrsToInfos(bootstrapAddrs)
 	if err != nil {
-		logger.Fatal(err)
+		logger.Error(err)
 	}
 
 	peersConnected := bootstrapDHT(ctx, host, bootstrapInfos, logger)
