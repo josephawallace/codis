@@ -10,15 +10,17 @@ services:
         node_role: bootstrap
     environment:
       - CODIS_IP=0.0.0.0
-      - CODIS_PORT=50043
+      - CODIS_PORT=50011
 
-  peer:
+  network:
     image: codis/peer
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        node_role: bootstrap
+        node_role: peer
+    depends_on:
+      - bootstrap
     environment:
       - CODIS_IP=0.0.0.0
       - CODIS_PORT=0
@@ -26,8 +28,25 @@ services:
       - CODIS_RENDEZVOUS=${CODIS_RENDEZVOUS}
       - CODIS_CLIENT=${CODIS_CLIENT}
       - CODIS_BOOTSTRAPS=${CODIS_BOOTSTRAPS}
-    depends_on:
-      - bootstrap
     deploy:
       mode: replicated
       replicas: 5
+
+  host:
+    image: codis/peer
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        node_role: peer
+    depends_on:
+      - network
+    ports:
+      - "50099:50099"
+    environment:
+      - CODIS_IP=0.0.0.0
+      - CODIS_PORT=50099
+      - CODIS_PSK=${CODIS_PSK}
+      - CODIS_RENDEZVOUS=${CODIS_RENDEZVOUS}
+      - CODIS_CLIENT=${CODIS_CLIENT}
+      - CODIS_BOOTSTRAPS=${CODIS_BOOTSTRAPS}
