@@ -1,14 +1,13 @@
 package network
 
 import (
+	"context"
+	"encoding/hex"
+	"fmt"
 	"github.com/milquellc/codis/configs"
 	"github.com/milquellc/codis/log"
 	"github.com/milquellc/codis/protocols"
 	"github.com/milquellc/codis/utils"
-
-	"context"
-	"encoding/hex"
-	"fmt"
 	"os"
 	"os/signal"
 	"strings"
@@ -19,6 +18,7 @@ import (
 	"github.com/libp2p/go-libp2p"
 	gorpc "github.com/libp2p/go-libp2p-gorpc"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	libhost "github.com/libp2p/go-libp2p/core/host"
 	libpeer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
@@ -34,6 +34,7 @@ type Peer struct {
 	Host libhost.Host
 
 	kdht      *dht.IpfsDHT
+	ps        *pubsub.PubSub
 	discovery *drouting.RoutingDiscovery
 	logger    *log.Logger
 }
@@ -70,6 +71,11 @@ func NewPeer(ctx context.Context, cfg *configs.Config) *Peer {
 		logger.Error(err)
 	}
 
+	ps, err := pubsub.NewGossipSub(ctx, host)
+	if err != nil {
+		logger.Error(err)
+	}
+
 	peersConnected := bootstrapDHT(ctx, host, bootstrapInfos, logger)
 	logger.Debug("connected to %d/%d bootstrap peers", peersConnected, len(bootstrapInfos))
 
@@ -80,6 +86,7 @@ func NewPeer(ctx context.Context, cfg *configs.Config) *Peer {
 		Host: host,
 
 		kdht:      kdht,
+		ps:        ps,
 		discovery: routingDiscovery,
 		logger:    logger,
 	}
@@ -120,22 +127,34 @@ func (p *Peer) AdvertiseConnect(ctx context.Context, rendezvous string) error {
 	return nil
 }
 
+type subscriptionHandler = func(ctx context.Context, sub *pubsub.Subscription, service interface{})
+
+func (p *Peer) Subscribe(ctx context.Context, topic string, handler subscriptionHandler, service interface{}) error {
+	tp, err := p.ps.Join(topic)
+	if err != nil {
+		return err
+	}
+
+	sub, err := tp.Subscribe()
+	if err != nil {
+		return err
+	}
+
+	go handler(ctx, sub, service)
+
+	return nil
+}
+
 // StartRPCServer allows the node to accept RPC calls from a single specified client
-func (p *Peer) StartRPCServer() error {
+func (p *Peer) StartRPCServer(services ...interface{}) error {
 	rpcHost := gorpc.NewServer(p.Host, "/codis/rpc")
 
-	keygenService := protocols.NewKeygenService(p.Host)
-	signService := protocols.NewSignService(p.Host)
-
-	if err := rpcHost.Register(keygenService); err != nil {
-		return err
+	for _, service := range services {
+		if err := rpcHost.Register(service); err != nil {
+			return err
+		}
 	}
-	p.logger.Debug("registered keygen service")
-
-	if err := rpcHost.Register(signService); err != nil {
-		return err
-	}
-	p.logger.Debug("registered sign service")
+	p.logger.Debug("registered services to rpc server")
 
 	for {
 		time.Sleep(time.Second * 1)

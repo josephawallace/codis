@@ -1,6 +1,7 @@
 package protocols
 
 import (
+	"errors"
 	"github.com/milquellc/codis/log"
 	"github.com/milquellc/codis/proto/pb"
 	"github.com/milquellc/codis/utils"
@@ -26,6 +27,7 @@ import (
 	edkg "github.com/bnb-chain/tss-lib/eddsa/keygen"
 	eds "github.com/bnb-chain/tss-lib/eddsa/signing"
 	"github.com/bnb-chain/tss-lib/tss"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -35,6 +37,7 @@ const (
 	SignPId              = "/sign/0.0.1"
 	signStepDirectPId    = "/sign/step/direct/0.0.1"
 	signStepBroadcastPId = "/sign/step/broadcast/0.0.1"
+	SignSubscription     = "SignSubscription"
 )
 
 type SignService struct {
@@ -122,6 +125,36 @@ func (ss *SignService) Sign(ctx context.Context, args *pb.SignArgs, _ *pb.SignRe
 	go ss.sign(args) // TODO: take and fill the reply
 
 	return nil
+}
+
+func SignSubscriptionHandler(ctx context.Context, sub *pubsub.Subscription, service interface{}) {
+	logger := log.NewLogger()
+
+	if service == nil {
+		logger.Error(errors.New("sign service required but not given"))
+		return
+	}
+
+	ss := service.(*SignService)
+	for {
+		m, err := sub.Next(ctx)
+		if err != nil {
+			logger.Error(err)
+			continue
+		}
+
+		var args pb.SignArgs
+		if err = proto.Unmarshal(m.Message.Data, &args); err != nil {
+			logger.Error(err)
+			continue
+		}
+
+		var reply *pb.SignReply
+		if err = ss.Sign(ctx, &args, reply); err != nil {
+			logger.Error(err)
+			continue
+		}
+	}
 }
 
 func (ss *SignService) signHandler(s network.Stream) {

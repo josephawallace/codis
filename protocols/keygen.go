@@ -1,6 +1,7 @@
 package protocols
 
 import (
+	"errors"
 	"github.com/milquellc/codis/log"
 	"github.com/milquellc/codis/proto/pb"
 	"github.com/milquellc/codis/utils"
@@ -22,6 +23,7 @@ import (
 	eckg "github.com/bnb-chain/tss-lib/ecdsa/keygen"
 	edkg "github.com/bnb-chain/tss-lib/eddsa/keygen"
 	"github.com/bnb-chain/tss-lib/tss"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -31,6 +33,7 @@ const (
 	KeygenPId              = "/keygen/0.0.1"
 	keygenStepDirectPId    = "/keygen/step/direct/0.0.1"
 	keygenStepBroadcastPId = "/keygen/step/broadcast/0.0.1"
+	KeygenSubscription     = "KeygenSubscription"
 )
 
 // KeygenService defines the state and functions needed to perform distributed key generation.
@@ -129,6 +132,36 @@ func (ks *KeygenService) Keygen(ctx context.Context, args *pb.KeygenArgs, _ *pb.
 	go ks.keygen(args) // TODO: take and fill the reply
 
 	return nil
+}
+
+func KeygenSubscriptionHandler(ctx context.Context, sub *pubsub.Subscription, service interface{}) {
+	logger := log.NewLogger()
+
+	if service == nil {
+		logger.Error(errors.New("keygen service required but not given"))
+		return
+	}
+
+	for {
+		ks := service.(*KeygenService)
+		m, err := sub.Next(ctx)
+		if err != nil {
+			ks.logger.Error(err)
+			continue
+		}
+
+		var args pb.KeygenArgs
+		if err = proto.Unmarshal(m.Message.Data, &args); err != nil {
+			logger.Error(err)
+			continue
+		}
+
+		var reply pb.KeygenReply
+		if err = ks.Keygen(ctx, &args, &reply); err != nil {
+			ks.logger.Error(err)
+			continue
+		}
+	}
 }
 
 // keygenHandler is the entrypoint for a peer to execute a keygen protocol on an incoming stream. This function would

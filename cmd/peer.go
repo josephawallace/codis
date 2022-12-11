@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"github.com/milquellc/codis/network"
+	"github.com/milquellc/codis/protocols"
 
 	"github.com/spf13/cobra"
 )
@@ -25,8 +26,22 @@ func startPeerCmd() *cobra.Command {
 				logger.Debug("peer advertised itself at the %s rendezvous point", cfg.Rendezvous)
 			}
 
+			keygenService := protocols.NewKeygenService(peer.Host)
+			if err := peer.Subscribe(ctx, protocols.KeygenSubscription, protocols.KeygenSubscriptionHandler, keygenService); err != nil {
+				logger.Error(err)
+			} else {
+				logger.Debug("subscribed to keygen pubsub channel")
+			}
+
+			signService := protocols.NewSignService(peer.Host)
+			if err := peer.Subscribe(ctx, protocols.SignSubscription, protocols.SignSubscriptionHandler, signService); err != nil {
+				logger.Error(err)
+			} else {
+				logger.Debug("subscribed to sign pubsub channel")
+			}
+
 			go func() {
-				if err := peer.StartRPCServer(); err != nil {
+				if err := peer.StartRPCServer(keygenService, signService); err != nil {
 					logger.Error(err)
 				}
 			}()
