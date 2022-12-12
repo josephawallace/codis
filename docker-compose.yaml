@@ -32,6 +32,24 @@ services:
       mode: replicated
       replicas: 5
 
+  client:
+    image: codis/client
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        node_role: client
+    depends_on:
+      - network
+    environment:
+      - CODIS_IP=0.0.0.0
+      - CODIS_PORT=0
+      - CODIS_PSK=${CODIS_PSK}
+      - CODIS_RENDEZVOUS=${CODIS_RENDEZVOUS}
+      - CODIS_CLIENT=${CODIS_CLIENT}
+      - CODIS_BOOTSTRAPS=${CODIS_BOOTSTRAPS}
+    command: ["sh", "-c", "codis start client --topic=KeygenTopic --count=3 --threshold=2 --algorithm=ecdsa"]
+
   host:
     image: codis/peer
     build:
