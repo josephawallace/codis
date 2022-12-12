@@ -1,7 +1,6 @@
 package protocols
 
 import (
-	"errors"
 	"github.com/milquellc/codis/log"
 	"github.com/milquellc/codis/proto/pb"
 	"github.com/milquellc/codis/utils"
@@ -23,7 +22,6 @@ import (
 	eckg "github.com/bnb-chain/tss-lib/ecdsa/keygen"
 	edkg "github.com/bnb-chain/tss-lib/eddsa/keygen"
 	"github.com/bnb-chain/tss-lib/tss"
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -33,7 +31,7 @@ const (
 	KeygenPId              = "/keygen/0.0.1"
 	keygenStepDirectPId    = "/keygen/step/direct/0.0.1"
 	keygenStepBroadcastPId = "/keygen/step/broadcast/0.0.1"
-	KeygenSubscription     = "KeygenSubscription"
+	KeygenTopic            = "KeygenTopic"
 )
 
 // KeygenService defines the state and functions needed to perform distributed key generation.
@@ -87,81 +85,9 @@ func NewKeygenService(h host.Host) *KeygenService {
 // argument structure and send it via RPC call to a host. The args should contain info like what the count and
 // threshold are for the party and the multiaddrs of each participant. Using these details, we can expect our host to
 // execute the protocol and fill out the reply structure to be read back by the client.
-func (ks *KeygenService) Keygen(ctx context.Context, args *pb.KeygenArgs, _ *pb.KeygenReply) error {
-	peerIds, err := utils.PeerIdStringsToPeerIds(args.Party)
-	if err != nil {
-		return err
-	}
-
-	// makes a new stream with each peer using the main protocol ID, then writes the args to the stream.
-	for _, peerId := range peerIds {
-		if peerId.String() == ks.host.ID().String() {
-			continue // don't self-dial
-		}
-		err = func() error {
-			s, err := ks.host.NewStream(ctx, peerId, KeygenPId)
-			if err != nil {
-				return err
-			} else {
-				ks.logger.Debug("new stream created with peer %s", peerId.String())
-			}
-			defer s.Close()
-
-			msg, err := proto.Marshal(args)
-			if err != nil {
-				return err
-			}
-
-			writer := bufio.NewWriter(s)
-			if _, err = writer.Write(msg); err != nil {
-				_ = s.Reset()
-				return err
-			}
-			if err := writer.Flush(); err != nil {
-				_ = s.Reset()
-				return err
-			}
-			return nil
-		}()
-		if err != nil {
-			return err
-		}
-	}
-
-	// the initiating peer has no peer to call its keygen handler, so it calls its own
-	go ks.keygen(args) // TODO: take and fill the reply
-
+func (ks *KeygenService) Keygen(ctx context.Context, args *pb.KeygenArgs, reply *pb.KeygenReply) error {
+	go ks.keygen(args, reply) // TODO: take and fill the reply
 	return nil
-}
-
-func KeygenSubscriptionHandler(ctx context.Context, sub *pubsub.Subscription, service interface{}) {
-	logger := log.NewLogger()
-
-	if service == nil {
-		logger.Error(errors.New("keygen service required but not given"))
-		return
-	}
-
-	for {
-		ks := service.(*KeygenService)
-		m, err := sub.Next(ctx)
-		if err != nil {
-			ks.logger.Error(err)
-			continue
-		}
-
-		var args pb.KeygenArgs
-		if err = proto.Unmarshal(m.Message.Data, &args); err != nil {
-			logger.Error(err)
-			continue
-		}
-
-		var reply pb.KeygenReply
-		if err = ks.Keygen(ctx, &args, &reply); err != nil {
-			ks.logger.Error(err)
-			continue
-		}
-	}
 }
 
 // keygenHandler is the entrypoint for a peer to execute a keygen protocol on an incoming stream. This function would
@@ -172,7 +98,11 @@ func (ks *KeygenService) keygenHandler(s network.Stream) {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 
-	var args pb.KeygenArgs
+	var (
+		args  pb.KeygenArgs
+		reply pb.KeygenReply
+	)
+
 	data, err := io.ReadAll(s)
 	if err != nil {
 		ks.logger.Error(err)
@@ -184,7 +114,7 @@ func (ks *KeygenService) keygenHandler(s network.Stream) {
 		return
 	}
 
-	go ks.keygen(&args)
+	go ks.keygen(&args, &reply)
 }
 
 // keygenStepHandlerDirect reads tss messages sent to this peer directly and updates the local party
@@ -226,7 +156,7 @@ func (ks *KeygenService) keygenStepHandlerCommon(s network.Stream, broadcast boo
 // only be invoked on other peers by this function anyway). The local party is set up and started, then there is a
 // select statement that gets outbound messages from the local party as they come, then sends the messages via the step
 // sub-protocols.
-func (ks *KeygenService) keygen(args *pb.KeygenArgs) {
+func (ks *KeygenService) keygen(args *pb.KeygenArgs, reply *pb.KeygenReply) {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 

@@ -37,7 +37,7 @@ const (
 	SignPId              = "/sign/0.0.1"
 	signStepDirectPId    = "/sign/step/direct/0.0.1"
 	signStepBroadcastPId = "/sign/step/broadcast/0.0.1"
-	SignSubscription     = "SignSubscription"
+	SignTopic            = "SignTopic"
 )
 
 type SignService struct {

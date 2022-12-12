@@ -18,6 +18,7 @@ type Config struct {
 	Client     string   `mapstructure:"client"`
 	Host       string   `mapstructure:"host"`
 	Bootstraps []string `mapstructure:"bootstraps"`
+	UseNodeKey bool     `mapstructure:"use_node_key"`
 }
 
 // NewConfig uses Viper to look through flags, environment variables, and config files to construct a config object that
@@ -41,6 +42,7 @@ func NewConfig(cmd *cobra.Command) *Config {
 	viper.SetDefault("client", "")
 	viper.SetDefault("host", "")
 	viper.SetDefault("bootstraps", "")
+	viper.SetDefault("use_node_key", false)
 
 	if err := viper.BindPFlags(cmd.Flags()); err != nil {
 		logger.Error(err)
