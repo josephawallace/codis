@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/milquellc/codis/network"
 	"github.com/milquellc/codis/proto/pb"
+	"github.com/milquellc/codis/protocols"
 	"os"
 
 	"github.com/AlecAivazis/survey/v2"
@@ -72,11 +73,22 @@ func clientLoop(client *network.Peer, rpcClient *rpc.Client, hostId peer.ID) {
 		// with a node that doesn't support the protocol. however, there is no apparent way to distinguish a bootstrap/
 		// service/client node from each other without implementing a custom identify protocol.
 		var servicePeerList []string
-		for _, p := range client.Host.Peerstore().Peers() {
-			if p.String() == client.Host.ID().String() { // don't include self in peer list
+		for _, peerId := range client.Host.Peerstore().Peers() {
+			if peerId.String() == client.Host.ID().String() {
+				continue // don't self-dial
+			}
+
+			// service peers must be online and implement the protocols checked below
+			if _, err := client.Host.NewStream(context.Background(), peerId, "/ipfs/ping/1.0.0"); err != nil {
 				continue
 			}
-			servicePeerList = append(servicePeerList, p.String())
+			if pid, err := client.Host.Peerstore().FirstSupportedProtocol(peerId, protocols.KeygenPId); err != nil || pid != protocols.KeygenPId {
+				continue
+			}
+			if pid, err := client.Host.Peerstore().FirstSupportedProtocol(peerId, protocols.SignPId); err != nil || pid != protocols.SignPId {
+				continue
+			}
+			servicePeerList = append(servicePeerList, peerId.String())
 		}
 
 		startResponse := menuPrompt(hostId, servicePeerList)

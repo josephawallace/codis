@@ -97,8 +97,18 @@ func AddrStringsToInfos(addrs []string) ([]peer.AddrInfo, error) {
 // GetOrCreatePrivKey will look into the `keys` directory for a keyfile that corresponds to the key ID passed as a parameter.
 // This way, the addresses of the peers can remain consistent after they've been initialized. This is most useful for
 // debugging purposes.
-func GetOrCreatePrivKey() (crypto.PrivKey, error) {
-	var privKey crypto.PrivKey
+func GetOrCreatePrivKey(useNodeKey bool) (crypto.PrivKey, error) {
+	var (
+		privKey crypto.PrivKey
+		err     error
+	)
+
+	if !useNodeKey {
+		if privKey, _, err = crypto.GenerateKeyPair(crypto.RSA, 2048); err != nil {
+			return nil, err
+		}
+		return privKey, nil
+	}
 
 	keyFile, _ := filepath.Abs("node_privkey.dat")
 	if data, err := os.ReadFile(keyFile); err == nil { // key specified and data already exists
