@@ -1,6 +1,5 @@
 version: "3.8"
 services:
-
   bootstrap:
     image: codis/bootstrap
     build:
@@ -8,10 +7,12 @@ services:
       dockerfile: Dockerfile
       args:
         node_role: bootstrap
+    ports:
+      - "50099:50099"
     environment:
       - CODIS_IP=0.0.0.0
-      - CODIS_PORT=50011
-
+      - CODIS_PORT=50099
+      - CODIS_USE_NODE_KEY=true
   network:
     image: codis/peer
     build:
@@ -28,43 +29,7 @@ services:
       - CODIS_RENDEZVOUS=${CODIS_RENDEZVOUS}
       - CODIS_CLIENT=${CODIS_CLIENT}
       - CODIS_BOOTSTRAPS=${CODIS_BOOTSTRAPS}
+      - CODIS_USE_NODE_KEY=true
     deploy:
       mode: replicated
       replicas: 5
-
-  client:
-    image: codis/client
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        node_role: client
-    depends_on:
-      - network
-    environment:
-      - CODIS_IP=0.0.0.0
-      - CODIS_PORT=0
-      - CODIS_PSK=${CODIS_PSK}
-      - CODIS_RENDEZVOUS=${CODIS_RENDEZVOUS}
-      - CODIS_CLIENT=${CODIS_CLIENT}
-      - CODIS_BOOTSTRAPS=${CODIS_BOOTSTRAPS}
-    command: ["sh", "-c", "codis start client --topic=KeygenTopic --count=3 --threshold=2 --algorithm=ecdsa"]
-
-  host:
-    image: codis/peer
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        node_role: peer
-    depends_on:
-      - network
-    ports:
-      - "50099:50099"
-    environment:
-      - CODIS_IP=0.0.0.0
-      - CODIS_PORT=50099
-      - CODIS_PSK=${CODIS_PSK}
-      - CODIS_RENDEZVOUS=${CODIS_RENDEZVOUS}
-      - CODIS_CLIENT=${CODIS_CLIENT}
-      - CODIS_BOOTSTRAPS=${CODIS_BOOTSTRAPS}

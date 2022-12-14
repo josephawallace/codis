@@ -1,24 +1,20 @@
 package protocols
 
 import (
-	"errors"
+	"github.com/codenotary/immudb/embedded/store"
+	"github.com/milquellc/codis/database"
 	"github.com/milquellc/codis/log"
 	"github.com/milquellc/codis/proto/pb"
 	"github.com/milquellc/codis/utils"
+	"time"
 
 	"bufio"
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"io"
-	"io/fs"
 	"math/big"
-	"os"
-	"path/filepath"
-	"strconv"
 	"sync"
 
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bnb-chain/tss-lib/common"
@@ -27,7 +23,6 @@ import (
 	edkg "github.com/bnb-chain/tss-lib/eddsa/keygen"
 	eds "github.com/bnb-chain/tss-lib/eddsa/signing"
 	"github.com/bnb-chain/tss-lib/tss"
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -49,6 +44,7 @@ type SignService struct {
 	errCh        chan *tss.Error
 	partyIdMap   map[peer.ID]*tss.PartyID
 	logger       *log.Logger
+	st           *store.ImmuStore
 	mu           *sync.Mutex
 	once         *sync.Once
 }
@@ -81,80 +77,8 @@ func NewSignService(h host.Host) *SignService {
 }
 
 func (ss *SignService) Sign(ctx context.Context, args *pb.SignArgs, _ *pb.SignReply) error {
-	peerIds, err := utils.PeerIdStringsToPeerIds(args.Party)
-	if err != nil {
-		return err
-	}
-
-	// makes a new stream with each peer using the main protocol ID, then writes the args to the stream.
-	for _, peerId := range peerIds {
-		if peerId.String() == ss.host.ID().String() {
-			continue // don't self-dial
-		}
-		err = func() error {
-			s, err := ss.host.NewStream(ctx, peerId, SignPId)
-			if err != nil {
-				return err
-			} else {
-				ss.logger.Debug("new stream created with peer %s", peerId.String())
-			}
-			defer s.Close()
-
-			msg, err := proto.Marshal(args)
-			if err != nil {
-				return err
-			}
-
-			writer := bufio.NewWriter(s)
-			if _, err = writer.Write(msg); err != nil {
-				_ = s.Reset()
-				return err
-			}
-			if err := writer.Flush(); err != nil {
-				_ = s.Reset()
-				return err
-			}
-			return nil
-		}()
-		if err != nil {
-			return err
-		}
-	}
-
-	// the initiating peer has no peer to call its sign handler, so it calls its own
 	go ss.sign(args) // TODO: take and fill the reply
-
 	return nil
-}
-
-func SignSubscriptionHandler(ctx context.Context, sub *pubsub.Subscription, service interface{}) {
-	logger := log.NewLogger()
-
-	if service == nil {
-		logger.Error(errors.New("sign service required but not given"))
-		return
-	}
-
-	ss := service.(*SignService)
-	for {
-		m, err := sub.Next(ctx)
-		if err != nil {
-			logger.Error(err)
-			continue
-		}
-
-		var args pb.SignArgs
-		if err = proto.Unmarshal(m.Message.Data, &args); err != nil {
-			logger.Error(err)
-			continue
-		}
-
-		var reply *pb.SignReply
-		if err = ss.Sign(ctx, &args, reply); err != nil {
-			logger.Error(err)
-			continue
-		}
-	}
 }
 
 func (ss *SignService) signHandler(s network.Stream) {
@@ -207,12 +131,23 @@ func (ss *SignService) sign(args *pb.SignArgs) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 
+	var keygenSaveData pb.KeygenSaveData
+	data, err := database.Get(args.KeyId)
+	if err != nil {
+		ss.logger.Error(err)
+		return
+	}
+	if err = proto.Unmarshal(data, &keygenSaveData); err != nil {
+		ss.logger.Error(err)
+		return
+	}
+
 	ss.reset()
 
 	ss.logger.Info("sign started!")
-	ss.logger.Info("alg: %s, party: %s", args.Alg, args.Party)
+	ss.logger.Info("alg: %s, party: %s", keygenSaveData.Metadata.Algorithm, keygenSaveData.Metadata.Party)
 
-	peerIds, err := utils.PeerIdStringsToPeerIds(args.Party)
+	peerIds, err := utils.PeerIdStringsToPeerIds(keygenSaveData.Metadata.Party)
 	if err != nil {
 		ss.logger.Error(err)
 		return
@@ -235,32 +170,27 @@ func (ss *SignService) sign(args *pb.SignArgs) {
 
 	peerCtx := tss.NewPeerContext(sortedPartyIds)
 
-	messageBytes, err := hex.DecodeString(args.Message)
-	if err != nil {
-		ss.logger.Error(err)
-		return
-	}
 	message := new(big.Int)
-	message.SetBytes(messageBytes)
+	message.SetBytes(args.Message)
 
-	if args.Alg == "eddsa" {
-		keysave, err := loadEDDSAKeygenSaves(thisPartyId.Index)
+	if string(keygenSaveData.Metadata.Algorithm) == "eddsa" {
+		keySave, err := loadEDDSAKeygenSaves(&keygenSaveData)
 		if err != nil {
 			ss.logger.Error(err)
 			return
 		}
 		curve := tss.Edwards()
-		params := tss.NewParameters(curve, peerCtx, thisPartyId, len(sortedPartyIds), int(args.Threshold))
-		ss.localParty = eds.NewLocalParty(message, params, *keysave, ss.outCh, ss.endCh).(*eds.LocalParty)
+		params := tss.NewParameters(curve, peerCtx, thisPartyId, len(sortedPartyIds), int(keygenSaveData.Metadata.Threshold))
+		ss.localParty = eds.NewLocalParty(message, params, *keySave, ss.outCh, ss.endCh).(*eds.LocalParty)
 	} else {
-		keysave, err := loadECDSAKeygenSaves(thisPartyId.Index)
+		keySave, err := loadECDSAKeygenSaves(&keygenSaveData)
 		if err != nil {
 			ss.logger.Error(err)
 			return
 		}
 		curve := tss.S256()
-		params := tss.NewParameters(curve, peerCtx, thisPartyId, len(sortedPartyIds), int(args.Threshold))
-		ss.localParty = ecs.NewLocalParty(message, params, *keysave, ss.outCh, ss.endCh).(*ecs.LocalParty)
+		params := tss.NewParameters(curve, peerCtx, thisPartyId, len(sortedPartyIds), int(keygenSaveData.Metadata.Threshold))
+		ss.localParty = ecs.NewLocalParty(message, params, *keySave, ss.outCh, ss.endCh).(*ecs.LocalParty)
 	}
 	ss.localPartyCh <- ss.localParty // local party initialized and safe to use (for step handlers)
 
@@ -305,21 +235,19 @@ func (ss *SignService) sign(args *pb.SignArgs) {
 				}
 			}
 		case save := <-ss.endCh:
-			data, err := protojson.Marshal(&save)
+			key := []byte(time.Now().String())
+			val, err := proto.Marshal(&save)
 			if err != nil {
 				ss.logger.Error(err)
 				return
 			}
 
-			saveFile, _ := filepath.Abs("saves/" + args.Alg + "/signature_" + strconv.Itoa(thisPartyId.Index) + ".json")
-			if _, err = os.Stat(filepath.Dir(saveFile)); os.IsNotExist(err) {
-				_ = os.MkdirAll(filepath.Dir(saveFile), fs.ModePerm)
-			}
-			if err = os.WriteFile(saveFile, data, 0600); err != nil {
+			if err = database.Set(key, val); err != nil {
 				ss.logger.Error(err)
 				return
 			}
-			ss.logger.Info("signature file saved")
+
+			ss.logger.Info("saved signature")
 			return
 		}
 	}
@@ -361,44 +289,32 @@ func stepSign(host host.Host, peer peer.ID, msg []byte, broadcast bool) error {
 	return nil
 }
 
-func loadECDSAKeygenSaves(index int) (*eckg.LocalPartySaveData, error) {
-	path, _ := filepath.Abs("./saves/ecdsa/keysave_" + strconv.Itoa(index) + ".json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var keygenSave eckg.LocalPartySaveData
-	if err = json.Unmarshal(data, &keygenSave); err != nil {
+func loadECDSAKeygenSaves(keygenSaveData *pb.KeygenSaveData) (*eckg.LocalPartySaveData, error) {
+	var localPartySaveData eckg.LocalPartySaveData
+	if err := json.Unmarshal(keygenSaveData.Data, &localPartySaveData); err != nil {
 		return nil, err
 	}
 
 	curve := tss.S256()
-	for _, kbxj := range keygenSave.BigXj {
+	for _, kbxj := range localPartySaveData.BigXj {
 		kbxj.SetCurve(curve)
 	}
-	keygenSave.ECDSAPub.SetCurve(curve)
+	localPartySaveData.ECDSAPub.SetCurve(curve)
 
-	return &keygenSave, nil
+	return &localPartySaveData, nil
 }
 
-func loadEDDSAKeygenSaves(index int) (*edkg.LocalPartySaveData, error) {
-	path, _ := filepath.Abs("./saves/eddsa/keysave_" + strconv.Itoa(index) + ".json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var keygenSave edkg.LocalPartySaveData
-	if err = json.Unmarshal(data, &keygenSave); err != nil {
+func loadEDDSAKeygenSaves(keygenSaveData *pb.KeygenSaveData) (*edkg.LocalPartySaveData, error) {
+	var localPartySaveData edkg.LocalPartySaveData
+	if err := json.Unmarshal(keygenSaveData.Data, &localPartySaveData); err != nil {
 		return nil, err
 	}
 
 	curve := tss.Edwards()
-	for _, kbxj := range keygenSave.BigXj {
+	for _, kbxj := range localPartySaveData.BigXj {
 		kbxj.SetCurve(curve)
 	}
-	keygenSave.EDDSAPub.SetCurve(curve)
+	localPartySaveData.EDDSAPub.SetCurve(curve)
 
-	return &keygenSave, nil
+	return &localPartySaveData, nil
 }

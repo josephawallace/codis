@@ -1,8 +1,8 @@
 # Env file that is used to send env var values to containers
 .env
 
-# Protocol result saves
-saves/
+# Embedded, persistent database
+.db
 
 # Libp2p node private key
 node_privkey.dat

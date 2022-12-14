@@ -1,4 +1,5 @@
 .env
 .idea
 .cache
+.db
 node_privkey.dat

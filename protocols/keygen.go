@@ -1,6 +1,8 @@
 package protocols
 
 import (
+	"encoding/hex"
+	"github.com/milquellc/codis/database"
 	"github.com/milquellc/codis/log"
 	"github.com/milquellc/codis/proto/pb"
 	"github.com/milquellc/codis/utils"
@@ -9,11 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"io/fs"
 	"math/big"
-	"os"
-	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
 
@@ -163,7 +161,7 @@ func (ks *KeygenService) keygen(args *pb.KeygenArgs, reply *pb.KeygenReply) {
 	ks.reset()
 
 	ks.logger.Info("keygen started!")
-	ks.logger.Info("count: %d, threshold: %d, alg: %s, party: %s", args.Count, args.Threshold, args.Alg, args.Party)
+	ks.logger.Info("count: %d, threshold: %d, alg: %s, party: %s", args.Count, args.Threshold, args.Algorithm, args.Party)
 
 	peerIds, err := utils.PeerIdStringsToPeerIds(args.Party)
 	if err != nil {
@@ -188,7 +186,7 @@ func (ks *KeygenService) keygen(args *pb.KeygenArgs, reply *pb.KeygenReply) {
 
 	peerCtx := tss.NewPeerContext(sortedPartyIds)
 
-	if args.Alg == "eddsa" {
+	if string(args.Algorithm) == "eddsa" {
 		curve := tss.Edwards()
 		params := tss.NewParameters(curve, peerCtx, thisPartyId, len(sortedPartyIds), int(args.Threshold))
 		ks.localParty = edkg.NewLocalParty(params, ks.outCh, ks.edEndCh).(*edkg.LocalParty)
@@ -246,46 +244,51 @@ func (ks *KeygenService) keygen(args *pb.KeygenArgs, reply *pb.KeygenReply) {
 				}
 			}
 		case save := <-ks.ecEndCh:
-			index, err := save.OriginalIndex()
-			if err != nil {
-				ks.logger.Error(err)
-			}
-			saveFile, _ := filepath.Abs("saves/" + args.Alg + "/keysave_" + strconv.Itoa(index) + ".json")
-
 			data, err := json.Marshal(&save)
 			if err != nil {
 				ks.logger.Error(err)
+				return
+			}
+			keygenSave := pb.KeygenSaveData{
+				Data:     data,
+				Metadata: args,
 			}
 
-			if _, err = os.Stat(filepath.Dir(saveFile)); os.IsNotExist(err) {
-				_ = os.MkdirAll(filepath.Dir(saveFile), fs.ModePerm)
-			}
-			if err = os.WriteFile(saveFile, data, 0600); err != nil {
+			key := append(save.ECDSAPub.ToECDSAPubKey().X.Bytes(), save.ECDSAPub.ToECDSAPubKey().Y.Bytes()...)
+			val, err := proto.Marshal(&keygenSave)
+			if err != nil {
 				ks.logger.Error(err)
 				return
 			}
-			ks.logger.Info("key file saved")
+			if err = database.Set(key, val); err != nil {
+				ks.logger.Error(err)
+				return
+			}
 			return
 		case save := <-ks.edEndCh:
-			index, err := save.OriginalIndex()
-			if err != nil {
-				ks.logger.Error(err)
-			}
-			saveFile, _ := filepath.Abs("saves/" + args.Alg + "/keysave_" + strconv.Itoa(index) + ".json")
-
 			data, err := json.Marshal(&save)
 			if err != nil {
 				ks.logger.Error(err)
+				return
+			}
+			keygenSave := pb.KeygenSaveData{
+				Data:     data,
+				Metadata: args,
 			}
 
-			if _, err = os.Stat(filepath.Dir(saveFile)); os.IsNotExist(err) {
-				_ = os.MkdirAll(filepath.Dir(saveFile), fs.ModePerm)
-			}
-			if err = os.WriteFile(saveFile, data, 0600); err != nil {
+			key := append(save.EDDSAPub.ToECDSAPubKey().X.Bytes(), save.EDDSAPub.ToECDSAPubKey().Y.Bytes()...)
+			val, err := proto.Marshal(&keygenSave)
+			if err != nil {
 				ks.logger.Error(err)
 				return
 			}
-			ks.logger.Info("key file saved")
+
+			if err = database.Set(key, val); err != nil {
+				ks.logger.Error(err)
+				return
+			}
+
+			ks.logger.Info("saved key %s", hex.EncodeToString(key))
 			return
 		}
 	}

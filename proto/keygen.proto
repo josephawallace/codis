@@ -6,10 +6,15 @@ option go_package = "/pb";
 message KeygenArgs {
   int32 count = 1;
   int32 threshold = 2;
-  string alg = 3;
+  bytes algorithm = 3;
   repeated string party = 4;
 }
 
 message KeygenReply {
-  string message = 1;
+  bytes message = 1;
+}
+
+message KeygenSaveData {
+  bytes data = 1;
+  KeygenArgs metadata = 2;
 }

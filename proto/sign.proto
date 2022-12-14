@@ -3,14 +3,14 @@ package sign;
 
 option go_package = "/pb";
 
+// key id = public key
+
 message SignArgs {
-  int32 count = 1;
-  int32 threshold = 2;
-  string alg = 3;
-  repeated string party = 4;
-  string message = 5;
+  bytes keyId = 1;
+  bytes message = 2;
 }
 
 message SignReply {
-  string signature = 1;
+  bytes keyId = 1;
+  bytes signature = 2;
 }

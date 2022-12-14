@@ -251,6 +251,7 @@ func (p *Peer) handleSubscription(ctx context.Context, sub *pubsub.Subscription)
 				continue
 			}
 
+			// only start processing if this peer is included in the party
 			for _, peerId := range args.Party {
 				if peerId == p.Host.ID().String() {
 					if err = p.rpcSelfClient.Call(p.Host.ID(), "KeygenService", "Keygen", &args, &reply); err != nil {

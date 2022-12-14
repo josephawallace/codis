@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"github.com/milquellc/codis/network"
 	"github.com/milquellc/codis/proto/pb"
@@ -50,7 +51,8 @@ convenient though, which is why we have this--to send test client commands from 
 
 			topic, _ := cmd.Flags().GetString("topic")
 
-			if topic == protocols.KeygenTopic {
+			switch topic {
+			case protocols.KeygenTopic:
 				alg, _ := cmd.Flags().GetString("algorithm")
 				count, _ := cmd.Flags().GetInt32("count")
 				threshold, _ := cmd.Flags().GetInt32("threshold")
@@ -69,11 +71,42 @@ convenient though, which is why we have this--to send test client commands from 
 				keygenArgs := pb.KeygenArgs{
 					Count:     count,
 					Threshold: threshold,
-					Alg:       alg,
+					Algorithm: []byte(alg),
 					Party:     party,
 				}
 
 				data, err := proto.Marshal(&keygenArgs)
+				if err != nil {
+					logger.Fatal(err)
+				}
+
+				if err = client.Publish(ctx, topic, data); err != nil {
+					logger.Fatal(err)
+				}
+			case protocols.SignTopic:
+				var (
+					keyId   []byte
+					message []byte
+				)
+
+				keyIdStr, _ := cmd.Flags().GetString("keyId")
+				messageStr, _ := cmd.Flags().GetString("message")
+
+				keyId, err := hex.DecodeString(keyIdStr)
+				if err != nil {
+					logger.Fatal(err)
+				}
+				message, err = hex.DecodeString(messageStr)
+				if err != nil {
+					logger.Fatal(err)
+				}
+
+				signArgs := pb.SignArgs{
+					KeyId:   keyId,
+					Message: message,
+				}
+
+				data, err := proto.Marshal(&signArgs)
 				if err != nil {
 					logger.Fatal(err)
 				}
@@ -89,6 +122,7 @@ convenient though, which is why we have this--to send test client commands from 
 
 	cmd.Flags().StringP("topic", "T", "", "topic to publish on")
 	cmd.Flags().StringP("message", "m", "", "message to signed (in hex)")
+	cmd.Flags().StringP("keyId", "k", "", "public key associated with the private key that should sign")
 	cmd.Flags().StringP("algorithm", "a", "ecdsa", "algorithm the key should work with")
 	cmd.Flags().Int32P("count", "c", 0, "total number of peers that should receive a share of the secret")
 	cmd.Flags().Int32P("threshold", "t", 0, "number of peers that need to collaborate to use the secret")
@@ -96,6 +130,9 @@ convenient though, which is why we have this--to send test client commands from 
 	cmd.MarkFlagsMutuallyExclusive("message", "algorithm")
 	cmd.MarkFlagsMutuallyExclusive("message", "count")
 	cmd.MarkFlagsMutuallyExclusive("message", "threshold")
+	cmd.MarkFlagsMutuallyExclusive("keyId", "algorithm")
+	cmd.MarkFlagsMutuallyExclusive("keyId", "count")
+	cmd.MarkFlagsMutuallyExclusive("keyId", "threshold")
 
 	cmd.MarkFlagsRequiredTogether("algorithm", "count", "threshold")
 
