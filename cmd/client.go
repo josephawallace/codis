@@ -1,12 +1,16 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"encoding/hex"
 	"errors"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/milquellc/codis/network"
 	"github.com/milquellc/codis/proto/pb"
 	"github.com/milquellc/codis/protocols"
+	"github.com/milquellc/codis/utils"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
 	"time"
@@ -26,11 +30,17 @@ convenient though, which is why we have this--to send test client commands from 
 
 			client := network.NewPeer(ctx, cfg)
 
+			if err := client.AdvertiseConnect(ctx, cfg.Rendezvous); err != nil {
+				logger.Error(err)
+			} else {
+				logger.Debug("peer advertised itself at the %s rendezvous point", cfg.Rendezvous)
+			}
+
 			logger.Info("client is running! listening at %s", client.ListenAddrs())
 
 			time.Sleep(time.Second * 5)
 
-			var servicePeerList []string
+			var servicePeerList [][]byte
 			for _, peerId := range client.Host.Peerstore().Peers() {
 				if peerId.String() == client.Host.ID().String() {
 					continue // don't self-dial
@@ -46,7 +56,7 @@ convenient though, which is why we have this--to send test client commands from 
 				if pid, err := client.Host.Peerstore().FirstSupportedProtocol(peerId, protocols.SignPId); err != nil || pid != protocols.SignPId {
 					continue
 				}
-				servicePeerList = append(servicePeerList, peerId.String())
+				servicePeerList = append(servicePeerList, []byte(peerId))
 			}
 
 			topic, _ := cmd.Flags().GetString("topic")
@@ -57,7 +67,7 @@ convenient though, which is why we have this--to send test client commands from 
 				count, _ := cmd.Flags().GetInt32("count")
 				threshold, _ := cmd.Flags().GetInt32("threshold")
 
-				var party []string
+				var party [][]byte
 				for _, servicePeer := range servicePeerList {
 					if len(party) < int(count) {
 						party = append(party, servicePeer)
@@ -74,36 +84,33 @@ convenient though, which is why we have this--to send test client commands from 
 					Algorithm: []byte(alg),
 					Party:     party,
 				}
+				keygenReply := pb.KeygenReply{}
 
-				data, err := proto.Marshal(&keygenArgs)
+				peerIds, err := utils.PeerIdsBytesToPeerIds(party)
 				if err != nil {
 					logger.Fatal(err)
 				}
-
-				if err = client.Publish(ctx, topic, data); err != nil {
-					logger.Fatal(err)
+				for _, peerId := range peerIds {
+					if err = callKeygen(ctx, client, peerId, protocols.KeygenPId, &keygenArgs, &keygenReply); err != nil {
+						logger.Error(err)
+						return
+					}
 				}
 			case protocols.SignTopic:
-				var (
-					keyId   []byte
-					message []byte
-				)
-
-				keyIdStr, _ := cmd.Flags().GetString("keyId")
-				messageStr, _ := cmd.Flags().GetString("message")
-
-				keyId, err := hex.DecodeString(keyIdStr)
+				keyStr, _ := cmd.Flags().GetString("key")
+				key, err := hex.DecodeString(keyStr)
 				if err != nil {
 					logger.Fatal(err)
 				}
-				message, err = hex.DecodeString(messageStr)
+				messageStr, _ := cmd.Flags().GetString("message")
+				message, err := hex.DecodeString(messageStr)
 				if err != nil {
 					logger.Fatal(err)
 				}
 
 				signArgs := pb.SignArgs{
-					KeyId:   keyId,
-					Message: message,
+					PublicKey: key,
+					Message:   message,
 				}
 
 				data, err := proto.Marshal(&signArgs)
@@ -121,8 +128,8 @@ convenient though, which is why we have this--to send test client commands from 
 	}
 
 	cmd.Flags().StringP("topic", "T", "", "topic to publish on")
+	cmd.Flags().StringP("key", "k", "", "public key associated with the private key that should sign")
 	cmd.Flags().StringP("message", "m", "", "message to signed (in hex)")
-	cmd.Flags().StringP("keyId", "k", "", "public key associated with the private key that should sign")
 	cmd.Flags().StringP("algorithm", "a", "ecdsa", "algorithm the key should work with")
 	cmd.Flags().Int32P("count", "c", 0, "total number of peers that should receive a share of the secret")
 	cmd.Flags().Int32P("threshold", "t", 0, "number of peers that need to collaborate to use the secret")
@@ -130,9 +137,9 @@ convenient though, which is why we have this--to send test client commands from 
 	cmd.MarkFlagsMutuallyExclusive("message", "algorithm")
 	cmd.MarkFlagsMutuallyExclusive("message", "count")
 	cmd.MarkFlagsMutuallyExclusive("message", "threshold")
-	cmd.MarkFlagsMutuallyExclusive("keyId", "algorithm")
-	cmd.MarkFlagsMutuallyExclusive("keyId", "count")
-	cmd.MarkFlagsMutuallyExclusive("keyId", "threshold")
+	cmd.MarkFlagsMutuallyExclusive("key", "algorithm")
+	cmd.MarkFlagsMutuallyExclusive("key", "count")
+	cmd.MarkFlagsMutuallyExclusive("key", "threshold")
 
 	cmd.MarkFlagsRequiredTogether("algorithm", "count", "threshold")
 
@@ -141,4 +148,40 @@ convenient though, which is why we have this--to send test client commands from 
 	}
 
 	return cmd
+}
+
+func callKeygen(ctx context.Context, client *network.Peer, peer peer.ID, pid protocol.ID, args *pb.KeygenArgs, reply *pb.KeygenReply) error {
+	s, err := client.Host.NewStream(ctx, peer, pid)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+
+	data, err := proto.Marshal(args)
+	if err != nil {
+		return err
+	}
+
+	writer := bufio.NewWriter(s)
+	if _, err = writer.Write(data); err != nil {
+		_ = s.Reset()
+		return err
+	}
+	if err := writer.Flush(); err != nil {
+		_ = s.Reset()
+		return err
+	}
+
+	//go func(s libnetwork.Stream, data []byte, reply *pb.KeygenReply) {
+	//	data, err = io.ReadAll(s)
+	//	if err != nil {
+	//		logger.Fatal(err)
+	//	}
+	//	err = proto.Unmarshal(data, reply)
+	//	if err != nil {
+	//		logger.Fatal(err)
+	//	}
+	//}(s, data, reply)
+
+	return nil
 }

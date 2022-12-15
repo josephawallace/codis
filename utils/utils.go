@@ -76,6 +76,30 @@ func PeerIdStringsToPeerIds(peerIdStrs []string) ([]peer.ID, error) {
 	return peerIds, nil
 }
 
+func PeerIdsBytesToPeerIds(peerIdsBytes [][]byte) ([]peer.ID, error) {
+	peerIds := make([]peer.ID, 0, len(peerIdsBytes))
+	for _, peerIdBytes := range peerIdsBytes {
+		peerId, err := peer.IDFromBytes(peerIdBytes)
+		if err != nil {
+			return nil, err
+		}
+		peerIds = append(peerIds, peerId)
+	}
+	return peerIds, nil
+}
+
+func PeerIdsBytesToPeerIdStrs(peerIdsBytes [][]byte) ([]string, error) {
+	peerIdStrs := make([]string, 0, len(peerIdsBytes))
+	for _, peerIdBytes := range peerIdsBytes {
+		peerId, err := peer.IDFromBytes(peerIdBytes)
+		if err != nil {
+			return nil, err
+		}
+		peerIdStrs = append(peerIdStrs, peerId.String())
+	}
+	return peerIdStrs, nil
+}
+
 // AddrStringsToInfos converts a slice containing string representations of multiaddrs into a slice containing addr infos,
 // without an intermediate function as a step
 func AddrStringsToInfos(addrs []string) ([]peer.AddrInfo, error) {

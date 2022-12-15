@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"github.com/codenotary/immudb/embedded/store"
 	"github.com/milquellc/codis/configs"
 	"github.com/milquellc/codis/log"
+	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
@@ -21,6 +24,14 @@ func NewRootCommand() *cobra.Command {
 keys, and subsequently, sign transactions with those keys--also in a distributed manner. This ensures that the private 
 key data never exists in it's entirety, and as such, is more resilient against attacks!`,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			db, err := filepath.Abs(".db")
+			if err != nil {
+				logger.Fatal(err)
+			}
+			if err = os.MkdirAll(db, store.DefaultFileMode); err != nil {
+				logger.Fatal(err)
+			}
+
 			cfg = configs.NewConfig(cmd)
 		},
 	}

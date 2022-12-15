@@ -1,11 +1,13 @@
 package database
 
-import "github.com/codenotary/immudb/embedded/store"
+import (
+	"github.com/codenotary/immudb/embedded/store"
+)
 
-const Name = ".db"
+var name = ".db"
 
 func Get(key []byte) ([]byte, error) {
-	st, err := store.Open(Name, store.DefaultOptions())
+	st, err := store.Open(name, store.DefaultOptions().WithMaxValueLen(store.DefaultMaxValueLen*8))
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +33,7 @@ func Get(key []byte) ([]byte, error) {
 }
 
 func Set(key []byte, val []byte) error {
-	st, err := store.Open(Name, store.DefaultOptions())
+	st, err := store.Open(name, store.DefaultOptions().WithMaxValueLen(store.DefaultMaxValueLen*8))
 	if err != nil {
 		return err
 	}

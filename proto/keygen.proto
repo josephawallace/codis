@@ -7,11 +7,12 @@ message KeygenArgs {
   int32 count = 1;
   int32 threshold = 2;
   bytes algorithm = 3;
-  repeated string party = 4;
+  repeated bytes party = 4;
 }
 
 message KeygenReply {
-  bytes message = 1;
+  bytes publicKey = 1;
+  KeygenArgs metadata = 2;
 }
 
 message KeygenSaveData {

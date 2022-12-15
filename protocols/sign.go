@@ -76,8 +76,8 @@ func NewSignService(h host.Host) *SignService {
 	return ss
 }
 
-func (ss *SignService) Sign(ctx context.Context, args *pb.SignArgs, _ *pb.SignReply) error {
-	go ss.sign(args) // TODO: take and fill the reply
+func (ss *SignService) Sign(ctx context.Context, args *pb.SignArgs, reply *pb.SignReply) error {
+	go ss.sign(args, reply)
 	return nil
 }
 
@@ -85,7 +85,11 @@ func (ss *SignService) signHandler(s network.Stream) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 
-	var args pb.SignArgs
+	var (
+		args  pb.SignArgs
+		reply pb.SignReply
+	)
+
 	data, err := io.ReadAll(s)
 	if err != nil {
 		ss.logger.Error(err)
@@ -97,7 +101,7 @@ func (ss *SignService) signHandler(s network.Stream) {
 		return
 	}
 
-	go ss.sign(&args)
+	go ss.sign(&args, &reply)
 }
 
 func (ss *SignService) signStepHandlerDirect(s network.Stream) {
@@ -127,12 +131,12 @@ func (ss *SignService) signStepHandlerCommon(s network.Stream, broadcast bool) {
 	}
 }
 
-func (ss *SignService) sign(args *pb.SignArgs) {
+func (ss *SignService) sign(args *pb.SignArgs, reply *pb.SignReply) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 
 	var keygenSaveData pb.KeygenSaveData
-	data, err := database.Get(args.KeyId)
+	data, err := database.Get(args.PublicKey)
 	if err != nil {
 		ss.logger.Error(err)
 		return
@@ -144,10 +148,16 @@ func (ss *SignService) sign(args *pb.SignArgs) {
 
 	ss.reset()
 
-	ss.logger.Info("sign started!")
-	ss.logger.Info("alg: %s, party: %s", keygenSaveData.Metadata.Algorithm, keygenSaveData.Metadata.Party)
+	partyStrs, err := utils.PeerIdsBytesToPeerIdStrs(keygenSaveData.Metadata.Party)
+	if err != nil {
+		ss.logger.Error(err)
+		return
+	}
 
-	peerIds, err := utils.PeerIdStringsToPeerIds(keygenSaveData.Metadata.Party)
+	ss.logger.Info("sign started!")
+	ss.logger.Info("alg: %s, party: %s", keygenSaveData.Metadata.Algorithm, partyStrs)
+
+	peerIds, err := utils.PeerIdsBytesToPeerIds(keygenSaveData.Metadata.Party)
 	if err != nil {
 		ss.logger.Error(err)
 		return
@@ -245,6 +255,11 @@ func (ss *SignService) sign(args *pb.SignArgs) {
 			if err = database.Set(key, val); err != nil {
 				ss.logger.Error(err)
 				return
+			}
+
+			reply = &pb.SignReply{
+				PublicKey: args.PublicKey,
+				Signature: save.Signature,
 			}
 
 			ss.logger.Info("saved signature")

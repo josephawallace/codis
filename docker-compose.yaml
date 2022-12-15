@@ -1,25 +1,23 @@
 version: "3.8"
 services:
   bootstrap:
-    image: codis/bootstrap
+    image: codis/peer
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        node_role: bootstrap
     ports:
       - "50099:50099"
     environment:
       - CODIS_IP=0.0.0.0
       - CODIS_PORT=50099
       - CODIS_USE_NODE_KEY=true
+    command: ["sh", "-c", "codis start bootstrap"]
+
   network:
     image: codis/peer
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        node_role: peer
     depends_on:
       - bootstrap
     environment:

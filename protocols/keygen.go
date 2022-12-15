@@ -160,10 +160,16 @@ func (ks *KeygenService) keygen(args *pb.KeygenArgs, reply *pb.KeygenReply) {
 
 	ks.reset()
 
-	ks.logger.Info("keygen started!")
-	ks.logger.Info("count: %d, threshold: %d, alg: %s, party: %s", args.Count, args.Threshold, args.Algorithm, args.Party)
+	partyStrs, err := utils.PeerIdsBytesToPeerIdStrs(args.Party)
+	if err != nil {
+		ks.logger.Error(err)
+		return
+	}
 
-	peerIds, err := utils.PeerIdStringsToPeerIds(args.Party)
+	ks.logger.Info("keygen started!")
+	ks.logger.Info("count: %d, threshold: %d, alg: %s, party: %s", args.Count, args.Threshold, args.Algorithm, partyStrs)
+
+	peerIds, err := utils.PeerIdsBytesToPeerIds(args.Party)
 	if err != nil {
 		ks.logger.Error(err)
 		return
@@ -264,6 +270,15 @@ func (ks *KeygenService) keygen(args *pb.KeygenArgs, reply *pb.KeygenReply) {
 				ks.logger.Error(err)
 				return
 			}
+
+			publicKey := append(save.ECDSAPub.ToECDSAPubKey().X.Bytes(), save.ECDSAPub.ToECDSAPubKey().Y.Bytes()...)
+
+			reply = &pb.KeygenReply{
+				PublicKey: publicKey,
+				Metadata:  args,
+			}
+
+			ks.logger.Info("saved key %s", hex.EncodeToString(key))
 			return
 		case save := <-ks.edEndCh:
 			data, err := json.Marshal(&save)
@@ -286,6 +301,11 @@ func (ks *KeygenService) keygen(args *pb.KeygenArgs, reply *pb.KeygenReply) {
 			if err = database.Set(key, val); err != nil {
 				ks.logger.Error(err)
 				return
+			}
+
+			reply = &pb.KeygenReply{
+				PublicKey: key,
+				Metadata:  args,
 			}
 
 			ks.logger.Info("saved key %s", hex.EncodeToString(key))

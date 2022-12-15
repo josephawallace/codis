@@ -206,8 +206,6 @@ func (p *Peer) StartRPCServer() error {
 
 // StartRPCClient connects to a host and enables this node to send RPC calls to it
 func (p *Peer) StartRPCClient(ctx context.Context, hostAddr string) (*gorpc.Client, error) {
-	_ = protocols.NewKeygenService(p.Host)
-
 	hostInfo, err := libpeer.AddrInfoFromString(hostAddr)
 	if err != nil {
 		return nil, err
@@ -252,8 +250,9 @@ func (p *Peer) handleSubscription(ctx context.Context, sub *pubsub.Subscription)
 			}
 
 			// only start processing if this peer is included in the party
-			for _, peerId := range args.Party {
-				if peerId == p.Host.ID().String() {
+			peerIds, err := utils.PeerIdsBytesToPeerIds(args.Party)
+			for _, peerId := range peerIds {
+				if peerId.String() == p.Host.ID().String() {
 					if err = p.rpcSelfClient.Call(p.Host.ID(), "KeygenService", "Keygen", &args, &reply); err != nil {
 						p.logger.Error(err)
 					}
